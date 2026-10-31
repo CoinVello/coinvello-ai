@@ -1,0 +1,65 @@
+{
+  "name": "@coinvello/mcp",
+  "version": "0.1.1",
+  "mcpName": "io.github.CoinVello/coinvello",
+  "description": "Model Context Protocol server for the CoinVello API: non-custodial crypto payments (checkout sessions, invoices, webhooks, credits) for Claude, Cursor, Windsurf, ChatGPT and other MCP clients.",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "coinvello-mcp": "dist/index.js"
+  },
+  "main": "dist/server.js",
+  "types": "dist/server.d.ts",
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "prebuild": "node scripts/copy-docs.mjs",
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "start": "node dist/index.js",
+    "start:http": "node dist/index.js --http 3333",
+    "dev": "tsx src/index.ts",
+    "test": "node test/smoke.mjs",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "coinvello",
+    "crypto-payments",
+    "bitcoin",
+    "usdc",
+    "stablecoin",
+    "payment-processor",
+    "non-custodial",
+    "webhooks",
+    "checkout",
+    "claude",
+    "cursor",
+    "ai-agent"
+  ],
+  "homepage": "https://coinvello.com/ai",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/CoinVello/coinvello-ai.git",
+    "directory": "api/ai/mcp-server"
+  },
+  "bugs": {
+    "url": "https://github.com/CoinVello/coinvello-ai/issues",
+    "email": "support@coinvello.com"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.1",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

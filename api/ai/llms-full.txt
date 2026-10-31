@@ -1,0 +1,792 @@
+# CoinVello API: complete integration guide for AI assistants
+
+> This single document is enough to integrate CoinVello end to end. It follows the llms.txt convention
+> (https://llmstxt.org). The short index is at https://coinvello.com/llms.txt; the machine-readable
+> OpenAPI 3.1 reference is at https://coinvello.com/.well-known/openapi.yaml. Version 2026-10-01.
+
+## 0. What CoinVello is (say this correctly)
+
+CoinVello (https://coinvello.com) is a **non-custodial crypto payment processor** for online merchants.
+
+- **Non-custodial.** Payments go directly from the payer's wallet to an address the merchant controls.
+  For Bitcoin the merchant registers an **xpub** and CoinVello derives a fresh receiving
+  address per invoice. For Ethereum, Base, Arbitrum, Optimism, Polygon, BNB Chain, Avalanche, Robinhood
+  Chain, Solana and Tron the merchant registers an **address they own**. CoinVello never holds crypto or fiat, so
+  there is no balance, no payout and no withdrawal step: the money is already in the merchant's wallet.
+- **No KYC, no KYB.** Signup is an email address and an API key. The API collects no identity data
+  about merchants or payers. The only verification that can ever happen is on a third-party partner's
+  side if the merchant chooses to connect an off-ramp account (optional).
+- **Fees are prepaid processing credits, bought in crypto.** No percentage cut, no per-transaction
+  cents. 1 credit = $0.01 nominal. Each confirmed payment consumes roughly 30 bps of its fiat value
+  (floor 2 credits, cap 2,000 credits). Bundles get cheaper per credit with volume, giving an
+  effective rate of ~0.30% (Starter) down to under 0.10% (Enterprise). There are no free live
+  credits; an account that does not want to prepay uses **pay as you go** (0.4% split on-chain,
+  open to every account, section 3b). Test mode credits cost nothing and never run out. Live prices come
+  from `GET /credits/bundles`.
+- **11 networks**: bitcoin, ethereum, base, arbitrum, optimism, polygon, bnb, avalanche,
+  robinhood, solana, tron. Assets: native coins plus USDC (ethereum, base, arbitrum, optimism, polygon,
+  bnb, avalanche, solana), USDT (ethereum, base, arbitrum, optimism, polygon, bnb, avalanche, solana, tron),
+  DAI (ethereum, base, arbitrum, optimism, polygon), EURC (ethereum, base, avalanche, solana), PYUSD
+  (ethereum) and USDG (`usdg:robinhood`, Paxos Global Dollar, on Robinhood Chain, EVM chain id 4663).
+  Bitcoin tokens (not stablecoins, priced at the BTC rate): WBTC (ethereum, base, arbitrum, optimism,
+  polygon), cbBTC (ethereum, base, arbitrum, solana), BTCB (`btcb:bnb`, 18 decimals) and BTC.b
+  (`btcb:avalanche`). Tokens without an official testnet contract are live-only (absent from test mode):
+  DAI, `usdc:bnb` (Binance-Peg, 18 decimals), USDT on base, arbitrum (USD₮0), optimism, avalanche and
+  solana, and every Bitcoin token (`wbtc:*`, `cbbtc:*`, `btcb:*`).
+- **Integration surfaces**: hosted checkout (pay.coinvello.com), embeddable widget
+  (`@coinvello/checkout`), REST API with SDKs (`@coinvello/sdk` on npm; `coinvello/sdk` and `coinvello` hosted at
+  https://coinvello.com/downloads/sdk/ until the Packagist and PyPI releases), plugins (WooCommerce available now; Shopify pending Shopify's approval; Magento 2, PrestaShop, OpenCart in testing),
+  MCP server (`@coinvello/mcp`).
+
+## 1. Conventions
+
+```
+Base URL        https://api.coinvello.com/v1
+Auth            Authorization: Bearer cv_test_...  (test mode)  |  cv_live_...  (live mode)
+Content type    application/json (UTF-8)
+Idempotency     Idempotency-Key: <unique string, <= 255 chars> on every POST (replayed for 24 h)
+Version pin     CoinVello-Version: 2026-10-01 (optional)
+Amounts         decimal STRINGS, e.g. "49.99", "0.00074230". Never floats.
+Asset ids       "<asset>:<chain>", e.g. "btc:bitcoin", "eth:ethereum", "usdc:polygon", "usdt:tron", "sol:solana"
+Ids             inv_ (invoice) pay_ (payment) wal_ (wallet) whe_ (webhook endpoint) evt_ (event)
+                cs_ (checkout session) cpu_ (credit purchase) rf_ (refund) cnv_ (conversion) ofp_ (off-ramp payout)
+Lists           GET ...?limit=20&cursor=<next_cursor>  ->  { "object": "list", "data": [...], "has_more": true, "next_cursor": "..." }
+Errors          { "error": { "type", "code", "message", "param?", "request_id", "doc_url?", "details?" } }
+Rate limit      100 req/s per key (burst 200); 429 carries Retry-After
+Local mock      http://localhost:4242/v1  (api/reference-server, accepts any cv_test_ key)
+```
+
+Test mode is a separate universe: test wallets, invoices, webhooks and credits are invisible to live
+keys and vice versa. Test-mode chains map to testnet4, sepolia, base-sepolia,
+arbitrum-sepolia, optimism-sepolia, amoy, bnb-testnet, fuji,
+robinhood-testnet (chain id 46630), devnet, nile.
+
+Key types: `cv_test_` / `cv_live_` (full merchant keys), `cv_test_rk_` / `cv_live_rk_` (restricted
+keys with scopes such as `invoices:write checkout_sessions:write webhooks:write events:read`).
+Merchants copy keys from Settings -> API keys (behind a second-factor check); keep them server-side only. Never put an API key in client-side code.
+
+## 2. The recommended integration in five steps
+
+1. Register a wallet (`POST /wallets`) - once, usually from the dashboard. It is usable at once in
+   live and test mode; addresses are validated strictly; a signed-message proof is optional.
+2. Create a **checkout session** (`POST /checkout-sessions`) when the customer wants to pay.
+3. **Redirect** the customer to `session.url` (`https://pay.coinvello.com/c/cs_...`). The hosted page
+   shows asset choice, QR code, wallet buttons, live status, and redirects to `success_url`.
+4. Create a **webhook endpoint** (`POST /webhooks`) once; on each delivery verify
+   `CoinVello-Signature`, dedupe on `event.id`, and **fulfil the order on `invoice.paid`**.
+5. In test mode, trigger the whole pipeline with `POST /test/simulate_payment`.
+
+Fulfil from webhooks (or by re-fetching the invoice with your API key), never from the redirect:
+the redirect URL can be opened by anyone.
+
+### 2.1 Register a wallet
+
+Bitcoin (xpub; a fresh address per invoice):
+
+```bash
+curl https://api.coinvello.com/v1/wallets \
+  -H "Authorization: Bearer $COINVELLO_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"type":"xpub","chain":"bitcoin","label":"Shop BTC","xpub":"vpub5Y6cjg7...","derivation_path":"m/84'"'"'/1'"'"'/0'"'"'"}'
+```
+
+EVM / Solana / Tron (merchant-owned address):
+
+```bash
+curl https://api.coinvello.com/v1/wallets \
+  -H "Authorization: Bearer $COINVELLO_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"type":"address","chain":"polygon","label":"Polygon hot wallet","address":"0x8ba1f109551bD432803012645Ac136ddd64DBA72","assets":["usdc:polygon","usdt:polygon"]}'
+```
+
+`WalletCreateRequest` fields: `type` (xpub|address, required), `chain` (required), `label` (required),
+`xpub`, `derivation_path` (e.g. `m/84'/0'/0'`), `address_type` (p2pkh|p2sh-p2wpkh|p2wpkh|p2tr),
+`start_index`, `address`, `assets[]`, `enabled`, `metadata`. Response: `Wallet` with `id` (`wal_`),
+`status` (active|verified|archived; `unverified` is a legacy synonym of active), `assets[]`,
+`first_address` (xpub wallets: compare it with the wallet's first receive address), and
+`verification.status` (`not_required` by default; signing a challenge is optional). Never send an xprv:
+it is rejected with `422 xprv_rejected` and you must rotate it. Bad addresses (wrong checksum, wrong
+network, zero/burn address, a token contract) are refused with `422 address_invalid`; Bitcoin
+needs an xpub (`422 xpub_required`).
+
+### 2.2 Create a checkout session
+
+```bash
+curl https://api.coinvello.com/v1/checkout-sessions \
+  -H "Authorization: Bearer $COINVELLO_API_KEY" \
+  -H "Content-Type: application/json" \
+  -H "Idempotency-Key: order-8812-checkout" \
+  -d '{
+    "amount": "129.00",
+    "currency": "EUR",
+    "accepted_assets": ["btc:bitcoin", "eth:ethereum", "usdt:tron", "usdc:polygon"],
+    "order_id": "SHOP-8812",
+    "success_url": "https://shop.example.com/thanks?order=8812",
+    "cancel_url": "https://shop.example.com/cart",
+    "customer": { "email": "buyer@example.com" },
+    "line_items": [{ "name": "Mechanical keyboard", "quantity": 1, "unit_amount": "129.00" }],
+    "redirect_on": "confirming",
+    "metadata": { "order_id": "8812" }
+  }'
+```
+
+Response `201 CheckoutSession`:
+
+```json
+{
+  "id": "cs_5TgH8kLp2Q",
+  "object": "checkout_session",
+  "livemode": false,
+  "status": "open",
+  "url": "https://pay.coinvello.com/c/cs_5TgH8kLp2Q",
+  "invoice_id": "inv_9XyZ12AbC3",
+  "invoice_status": "new",
+  "amount": "129.00",
+  "currency": "EUR",
+  "order_id": "SHOP-8812",
+  "success_url": "https://shop.example.com/thanks?order=8812",
+  "cancel_url": "https://shop.example.com/cart",
+  "redirect_on": "confirming",
+  "expires_at": "2026-10-21T10:30:00Z",
+  "created_at": "2026-10-21T10:00:00Z"
+}
+```
+
+`CheckoutSessionCreateRequest` = every `InvoiceCreateRequest` field plus `success_url` (required),
+`line_items[]` (`name`, `quantity`, `unit_amount`, `description?`, `image_url?`), `redirect_on`
+(`confirming` default | `paid`), `locale`, `branding` (`theme` light|dark|auto, `logo_url`,
+`primary_color` `#RRGGBB`, `merchant_name`), `collect_email`, `allow_asset_change`.
+
+`InvoiceCreateRequest` fields: `amount` (required, decimal string), `currency` (required; ISO 4217
+such as USD/EUR/GBP or an asset id such as `btc:bitcoin` to price in crypto), `accepted_assets[]`
+(defaults to all eligible), `order_id` (<=128, indexed), `description`, `customer`
+(`email`, `name`, `reference`), `success_url`, `cancel_url`, `expires_in` (300..86400 s, default 1800),
+`rate_lock` (default true), `rate_lock_id`, `required_confirmations` (per asset override),
+`underpayment_tolerance` (default "0.005"), `overpayment_tolerance` (default "0.02"),
+`payment_options_mode` (all|single), `metadata` (<=50 string pairs).
+
+Checkout session `status`: `open` -> `complete` | `expired`. The underlying invoice carries the money
+state: `new -> pending -> confirming -> paid`, or `underpaid`, `overpaid`, `expired`, `cancelled`,
+`refund_requested`. Alias path `/checkout_sessions` is accepted. `GET /checkout-sessions/{id}?expand=invoice`
+embeds the invoice. `POST /checkout-sessions/{id}/expire` closes it.
+
+Public, unauthenticated, CORS-open endpoints used by the hosted page and widget (never need your key):
+`GET /checkout-sessions/{id}/public` (redacted `PublicCheckoutSession`) and
+`GET /checkout-sessions/{id}/events` (Server-Sent Events: `status` on every change, `heartbeat` every 15 s).
+
+### 2.3 Or create a bare invoice (bring your own UI)
+
+```bash
+curl https://api.coinvello.com/v1/invoices \
+  -H "Authorization: Bearer $COINVELLO_API_KEY" \
+  -H "Content-Type: application/json" \
+  -H "Idempotency-Key: order-10042-invoice" \
+  -d '{"amount":"49.99","currency":"USD","accepted_assets":["btc:bitcoin","usdc:polygon"],"order_id":"WC-10042","success_url":"https://shop.example.com/thanks","metadata":{"woocommerce_order_id":"10042"}}'
+```
+
+Response `201 Invoice` (abridged):
+
+```json
+{
+  "id": "inv_9XyZ12AbC3",
+  "object": "invoice",
+  "livemode": false,
+  "status": "new",
+  "amount": "49.99",
+  "currency": "USD",
+  "pricing": "fiat",
+  "accepted_assets": ["btc:bitcoin", "usdc:polygon"],
+  "hosted_url": "https://pay.coinvello.com/i/inv_9XyZ12AbC3",
+  "payment_options": [
+    {
+      "asset": "btc:bitcoin", "symbol": "BTC", "chain": "bitcoin", "network_id": null,
+      "address": "tb1qw508d6qejxtdg4y5r3zarvary0c5xw7kxpjzsx",
+      "amount": "0.00074230", "amount_minor": "74230", "rate": "67350.12",
+      "payment_uri": "bitcoin:tb1qw508d6qejxtdg4y5r3zarvary0c5xw7kxpjzsx?amount=0.0007423",
+      "qr_payload": "bitcoin:tb1qw508d6qejxtdg4y5r3zarvary0c5xw7kxpjzsx?amount=0.0007423",
+      "required_confirmations": 1, "status": "available"
+    },
+    {
+      "asset": "usdc:polygon", "symbol": "USDC", "chain": "polygon", "network_id": "80002",
+      "address": "0x8ba1f109551bD432803012645Ac136ddd64DBA72",
+      "contract_address": "0x41E94Eb019C0762f9Bfcf9Fb1E58725BfB0e7582", "decimals": 6,
+      "amount": "50.000518", "amount_minor": "50000518", "rate": "0.9999",
+      "payment_uri": "ethereum:0x41E94Eb019C0762f9Bfcf9Fb1E58725BfB0e7582@80002/transfer?address=0x8ba1f109551bD432803012645Ac136ddd64DBA72&uint256=50000518",
+      "qr_payload": "ethereum:0x41E94Eb019C0762f9Bfcf9Fb1E58725BfB0e7582@80002/transfer?address=0x8ba1f109551bD432803012645Ac136ddd64DBA72&uint256=50000518",
+      "required_confirmations": 64, "status": "available"
+    }
+  ],
+  "paid": null,
+  "order_id": "WC-10042",
+  "rate_lock": { "locked": true, "locked_until": "2026-10-21T10:30:00Z", "rates": { "btc:bitcoin": "67350.12", "usdc:polygon": "0.9999" } },
+  "metadata": { "woocommerce_order_id": "10042" },
+  "expires_at": "2026-10-21T10:30:00Z",
+  "created_at": "2026-10-21T10:00:00Z"
+}
+```
+
+Render a QR from `qr_payload` and a wallet deep link from `payment_uri` (BIP-21 for BTC, EIP-681
+for EVM, Solana Pay for Solana, `tron:` for Tron). Once a payment is detected, `invoice.paid`
+(the object field) holds `amount_received`, `amount_remaining`, `confirmations`, `payment_ids`.
+Other invoice endpoints: `GET /invoices?status=&order_id=&limit=&cursor=`, `GET /invoices/{id}`,
+`PATCH /invoices/{id}` (metadata/description), `POST /invoices/{id}/cancel`, `POST /invoices/{id}/expire`,
+`GET /invoices/{id}/payments`.
+
+### 2.4 Create a webhook endpoint
+
+```bash
+curl https://api.coinvello.com/v1/webhooks \
+  -H "Authorization: Bearer $COINVELLO_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"url":"https://shop.example.com/webhooks/coinvello","description":"Shop production","events":["invoice.paid","invoice.confirming","invoice.underpaid","invoice.overpaid","invoice.expired","payment.detected","checkout_session.completed"]}'
+```
+
+Response `201 Webhook` includes `"secret": "whsec_<64 hex>"` **once**. Store it as `COINVELLO_WEBHOOK_SECRET`.
+Live endpoints must be HTTPS; test endpoints may be `http://localhost`. Use `"events": ["*"]` for everything.
+`POST /webhooks/{id}/test` sends a signed ping. `POST /webhooks/{id}/rotate_secret` rotates with a
+grace period during which deliveries carry two `v1=` signatures. Up to 16 endpoints per mode.
+
+Every delivery:
+
+```
+POST /webhooks/coinvello
+Content-Type: application/json
+User-Agent: CoinVello-Webhooks/1.0 (+https://coinvello.com/webhooks)
+CoinVello-Signature: t=1760000000,v1=5257a869e7ecebeda32affa62cdca3fa51cad7e77a0e56ff536d0ce8e108d8bd
+CoinVello-Event-Id: evt_1Nz7Qw3Er9
+CoinVello-Event-Type: invoice.paid
+CoinVello-Webhook-Id: whe_2JxK9vL3mQ
+CoinVello-Delivery-Id: whd_4Hn7Pq2W
+CoinVello-Delivery-Attempt: 1
+
+{
+  "id": "evt_1Nz7Qw3Er9",
+  "object": "event",
+  "type": "invoice.paid",
+  "livemode": true,
+  "api_version": "2026-10-01",
+  "created_at": "2026-10-21T10:04:12Z",
+  "data": {
+    "object": { "id": "inv_9XyZ12AbC3", "object": "invoice", "status": "paid", "order_id": "WC-10042", "metadata": { "woocommerce_order_id": "10042" }, "...": "..." },
+    "previous_attributes": { "status": "confirming" }
+  },
+  "request": { "id": "req_...", "idempotency_key": "order-10042-invoice" },
+  "pending_webhooks": 1
+}
+```
+
+Respond `2xx` within 10 s. Retries: 1 min, 5 min, 30 min, 2 h, 6 h, 12 h, 24 h, 24 h (9 attempts,
+~70 h). Ordering is not guaranteed: act on `data.object.status`, not on the sequence of events.
+Endpoints are `degraded` after 3 consecutive failures and auto-disabled after 72 h of failures.
+
+Event types: `invoice.created`, `invoice.pending`, `invoice.confirming` (safe to show "payment
+received"), `invoice.paid` (**fulfil**), `invoice.underpaid`, `invoice.overpaid`, `invoice.expired`,
+`invoice.cancelled`, `invoice.refund_requested`, `payment.detected`, `payment.confirmed`,
+`payment.failed`, `wallet.verified`, `checkout_session.completed`, `checkout_session.expired`,
+`credits.low`, `credits.added`, `credits.purchase.paid` / `.underpaid` / `.expired`,
+`refund.completed` / `.failed`, `conversion.completed` / `.failed`, `offramp.completed` / `.failed`.
+
+### 2.5 Verify the webhook signature (exact scheme)
+
+```
+CoinVello-Signature: t=<unix seconds>,v1=<hex HMAC-SHA256>[,v1=<hex HMAC-SHA256>]
+```
+
+1. Read the **raw request body bytes** before any JSON/body-parser middleware touches them.
+2. Parse the header into `t` and one or more `v1` values.
+3. Reject if `t` is missing or `|now - t| > 300` seconds.
+4. `expected = hex(HMAC_SHA256(key = secret as UTF-8 including the "whsec_" prefix, message = "<t>." + raw_body))`.
+5. Compare `expected` against each `v1` with a constant-time comparison. Valid if any matches.
+6. Dedupe on `event.id` (keep processed ids for at least 3 days). Only then parse JSON and act.
+
+Node (no dependencies):
+
+```js
+import crypto from "node:crypto";
+
+export function verifyCoinVelloSignature(rawBody, header, secret, toleranceSec = 300) {
+  if (!header) throw new Error("missing CoinVello-Signature");
+  let t = 0; const sigs = [];
+  for (const part of header.split(",")) {
+    const [k, ...rest] = part.trim().split("="); const v = rest.join("=");
+    if (k === "t") t = Number(v);
+    if (k === "v1") sigs.push(v);
+  }
+  if (!t || Math.abs(Date.now() / 1000 - t) > toleranceSec) throw new Error("timestamp outside tolerance");
+  const body = Buffer.isBuffer(rawBody) ? rawBody : Buffer.from(rawBody, "utf8");
+  const expected = crypto.createHmac("sha256", secret).update(`${t}.`).update(body).digest();
+  const ok = sigs.some((s) => {
+    const b = Buffer.from(s, "hex");
+    return b.length === expected.length && crypto.timingSafeEqual(b, expected);
+  });
+  if (!ok) throw new Error("signature mismatch");
+  return JSON.parse(body.toString("utf8"));
+}
+```
+
+Python (stdlib only):
+
+```python
+import hmac, hashlib, json, time
+
+def verify_coinvello_signature(raw_body: bytes, header: str, secret: str, tolerance: int = 300) -> dict:
+    t, sigs = 0, []
+    for part in (header or "").split(","):
+        k, _, v = part.strip().partition("=")
+        if k == "t":
+            t = int(v)
+        elif k == "v1":
+            sigs.append(v)
+    if not t or abs(time.time() - t) > tolerance:
+        raise ValueError("timestamp outside tolerance")
+    expected = hmac.new(secret.encode(), f"{t}.".encode() + raw_body, hashlib.sha256).hexdigest()
+    if not any(hmac.compare_digest(expected, s) for s in sigs):
+        raise ValueError("signature mismatch")
+    return json.loads(raw_body)
+```
+
+PHP (plain, WordPress, Laravel):
+
+```php
+<?php
+function coinvello_verify(string $raw, string $header, string $secret, int $tolerance = 300): array
+{
+    $t = 0; $sigs = [];
+    foreach (explode(',', $header) as $pair) {
+        $kv = explode('=', trim($pair), 2);
+        if (count($kv) !== 2) continue;
+        if ($kv[0] === 't')  { $t = (int) $kv[1]; }
+        if ($kv[0] === 'v1') { $sigs[] = $kv[1]; }
+    }
+    if ($t === 0 || abs(time() - $t) > $tolerance) {
+        throw new RuntimeException('timestamp outside tolerance');
+    }
+    $expected = hash_hmac('sha256', $t . '.' . $raw, $secret);
+    foreach ($sigs as $sig) {
+        if (hash_equals($expected, $sig)) {
+            return json_decode($raw, true, 512, JSON_THROW_ON_ERROR);
+        }
+    }
+    throw new RuntimeException('signature mismatch');
+}
+// $event = coinvello_verify(file_get_contents('php://input'), $_SERVER['HTTP_COINVELLO_SIGNATURE'] ?? '', getenv('COINVELLO_WEBHOOK_SECRET'));
+```
+
+With the SDKs: Node `cv.webhooks.constructEvent(rawBody, header, secret)`, PHP
+`\CoinVello\Sdk\Webhooks::constructEvent($raw, $header, $secret)`, Python
+`coinvello.Webhooks.construct_event(raw, header, secret)`. All throw on failure.
+
+Test vector (useful for unit tests): secret `whsec_test`, `t = 1760000000`, body `{"id":"evt_1","type":"ping"}`
+-> signed string `1760000000.{"id":"evt_1","type":"ping"}`; compute `v1` with the code above and
+assert that changing one body byte fails.
+
+### 2.6 Poll an invoice (fallback or reconciliation)
+
+```bash
+curl https://api.coinvello.com/v1/invoices/inv_9XyZ12AbC3 -H "Authorization: Bearer $COINVELLO_API_KEY"
+curl "https://api.coinvello.com/v1/checkout-sessions/cs_5TgH8kLp2Q?expand=invoice" -H "Authorization: Bearer $COINVELLO_API_KEY"
+curl "https://api.coinvello.com/v1/invoices?order_id=WC-10042" -H "Authorization: Bearer $COINVELLO_API_KEY"
+```
+
+Poll every 5 s while the status is non-terminal, backing off to 60 s on errors. Terminal statuses:
+`paid`, `underpaid`, `overpaid`, `expired`, `cancelled`. For high-value flows re-fetch the invoice
+with your API key before fulfilling, even after a verified webhook.
+
+### 2.7 Simulate a payment in test mode
+
+```bash
+curl https://api.coinvello.com/v1/test/simulate_payment \
+  -H "Authorization: Bearer $COINVELLO_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"invoice_id":"inv_9XyZ12AbC3","asset":"usdc:polygon","confirmations":64}'
+```
+
+`SimulatePaymentRequest`: `invoice_id` (`inv_` or `cpu_`, required), `asset`, `amount` (less/more to
+simulate underpaid/overpaid), `confirmations` (0 = detected only; >= required = confirmed),
+`tx_hash` (reuse to advance the same payment), `from_address`, `delay_seconds` (0..300).
+Test keys only (`403 test_mode_only` otherwise). It runs the real state machine and fires real
+signed webhooks.
+
+## 3. Credits (how fees work in the API)
+
+```bash
+curl https://api.coinvello.com/v1/credits/balance -H "Authorization: Bearer $COINVELLO_API_KEY"
+# {"object":"credits_balance","livemode":true,"balance":1852,"available":1840,"reserved":12,"low_balance_threshold":200,
+#  "estimated_payments_remaining":76,"auto_topup":{"enabled":true,"bundle_id":"bnd_growth_15000","trigger_below":200},...}
+# balance = available + reserved, never negative; reserved = estimated fees of open invoices paid with credits.
+
+curl https://api.coinvello.com/v1/credits/bundles -H "Authorization: Bearer $COINVELLO_API_KEY"
+# list of CreditBundle: id, name, credits, bonus_credits, price {amount,currency:"USD"}, price_per_credit,
+# crypto_prices[] {asset, amount, rate}, rates_as_of
+
+curl https://api.coinvello.com/v1/credits/purchases \
+  -H "Authorization: Bearer $COINVELLO_API_KEY" -H "Content-Type: application/json" \
+  -d '{"bundle_id":"bnd_growth_15000","pay_asset":"usdt","pay_chain":"tron"}'
+# CreditPurchase: id cpu_..., status (invoice lifecycle), credits, price, checkout_url
+# (https://pay.coinvello.com/credits/cpu_...), payment.payment_options[] with the operator wallet address.
+```
+
+Pay the returned payment option (or open `checkout_url`); credits are added at `paid`/`overpaid`
+and `credits.added` fires. Merchants can also pay by card: cards are saved in the dashboard
+(Square card form + 2FA; API keys cannot add cards), listed by `GET /credits/payment_methods`, and
+charged with `POST /credits/purchases {"bundle_id":"...","payment_method":"pm_..."}`, which returns
+`paid` at once or `402 card_error / card_declined`. `GET /credits/ledger` lists every debit and
+credit (`reason`: invoice_fee, checkout_fee, purchase, purchase_reversal, bonus, ...).
+`PUT /credits/auto_topup` buys a bundle with the saved card when the balance drops below a
+threshold (`monthly_limit` optional; card-only, since crypto cannot be pulled).
+
+Running out: the balance never goes below zero (no deficit, no overage). Creating an invoice paid with
+credits reserves its estimated fee (`clamp(round(usd x 30 bps / $0.01), 2, 2000)`); a payment larger than
+the invoice is charged at most what the account holds. When `available` cannot cover a new invoice, an
+account with `auto_switch_to_pay_as_you_go: true` (the default; `PATCH /account` to change it) switches to
+`billing_plan: "pay_as_you_go"` and keeps taking payments, and the account email is notified (only where
+pay as you go is open to the account, `pay_as_you_go.available`). Otherwise creating invoices returns
+`402 credits_error / insufficient_credits` with `details: { available, required, bundles_url }`;
+detection of already-issued invoices continues. Bitcoin payments use credits even on pay as you go.
+
+Indicative bundle tiers (from the pricing model; the API is authoritative): Starter 2,500 for $25 (0.30%); Growth 15,000 for $120 (0.24%); Scale 75,000 for $450 (0.18%);
+Volume 400,000 for $1,600 (0.12%); Enterprise 2M+ from $6,000 (<= 0.09%). Purchased credits last
+24 months.
+
+## 3b. Pay as you go
+
+The alternative to credits: `PATCH /account {"billing_plan":"pay_as_you_go"}` (API key, or a dashboard session
+with a 2FA step-up). CoinVello then takes 0.4% (`fee_bps: 40`) of each payment on-chain, nothing up front.
+`GET /account` shows `billing_plan` and `pay_as_you_go.chains[].status` (enabled / sweep_only / disabled /
+not_supported). Bitcoin keeps using credits. A prepaid account also lands here automatically when its credits
+run out, unless `auto_switch_to_pay_as_you_go` is false (section 3). Still non-custodial:
+
+- Each wallet on an enabled chain gets a **receiver** (`GET /receivers`, `rcv_...`): a merchant-owned contract
+  (EVM, Tron) or program-owned vault (Solana) whose address is known before it is deployed. Invoices created afterwards set
+  `payment_options[].receiver_id` and `address` to the receiver. Customers pay it with ordinary transfers;
+  nothing changes for them or for your webhook handling.
+- A **sweep** splits the receiver's balance on-chain: 99.6% to your wallet, 0.4% to CoinVello (or its backup
+  address; if neither can take it you get 100%). Nobody can change the split or redirect funds. CoinVello's
+  sweeper sweeps when the fee covers gas several times over; you can sweep any time with
+  `POST /receivers/{id}/sweep_transaction {"from":"0x..."}` (returns an unsigned EIP-1559 transaction; you pay its
+  gas). Every sweep is listed in `GET /sweeps` and fires `sweep.confirmed` (first one also `receiver.deployed`).
+- Paid invoices show `fee: {"plan":"pay_as_you_go","bps":40,"amount":"...","asset":"usdc:base","receiver_id":"rcv_...","sweep_id":null}`;
+  `sweep_id` is set when the sweep that collected it confirms. Test mode: `POST /test/simulate_sweep {"receiver_id":"rcv_..."}`.
+
+Do not hard-code receiver addresses; read them from the payment options. Do not add pay-as-you-go handling unless
+the merchant asked for it: on prepaid nothing here applies.
+
+## 3c. Contracts and safety (how to verify it)
+
+Prepaid credits never involve a contract: payments go straight to the merchant's own wallet. Contracts exist
+only for pay as you go.
+
+- **One receiver per merchant wallet.** A contract (EVM, Tron) or a program-owned vault PDA (Solana) whose
+  address commits to (factory, merchant payout wallet, `feeRecipient`, `feeRecipientBackup`, `feeBps`).
+  Payers send a plain transfer. On EVM and Tron payments can arrive before deployment (counterfactual CREATE2
+  address); the receiver is deployed with its first sweep (`factory.deployAndSweep`). Solana vaults need no
+  deployment.
+- **Sweeps are permissionless.** `sweep(token)` / `sweepNative()` / `sweepAll` (Solana: `sweep_sol` /
+  `sweep_token`) can be called by anyone and send `floor(balance x 40 / 10000)` to CoinVello's fee address and the rest (99.6%) to the merchant, in one
+  transaction. If the fee recipient cannot take the asset, the fee goes to the backup (`FeePaidToBackup`); if
+  that fails too, the merchant gets everything (`FeeForfeited`). The merchant leg has no fallback: if it
+  cannot be paid the sweep reverts and the funds stay in the receiver.
+- **Nothing can be changed.** `payout`, `feeRecipient`, `feeRecipientBackup` and `feeBps` are immutable. No
+  owner, admin, pause, upgrade, setter, `selfdestruct` or `delegatecall`. Solidity 0.8.24 with OpenZeppelin
+  5.6.1 (SafeERC20, Math.mulDiv, ReentrancyGuard). Bitcoin has no contracts and uses credits.
+- **Deployed (mainnet).**
+  - EVM `CoinVelloReceiverFactory` `0x4acA19Abe7a184a81c992dcA3c0432b892C98da7`, same address on Ethereum (1),
+    Base (8453), Arbitrum One (42161), OP Mainnet (10), Polygon (137), BNB Smart Chain (56) and Avalanche
+    C-Chain (43114), deployed through the deterministic CREATE2 deployer `0x4e59b44847b379578588920cA78FbF26c0B4956C`.
+  - Tron factory `TUGyMNRrd6DP5YLMy1P9HVqrJ9pFe4Ta2J`.
+  - Solana program `2ZxRKdxZxQ1FqKYhjdCd2iZTGznaNTx1ZuAfMF7ZysMr`, upgrade authority none (immutable); program
+    data sha256 `cd804af1e031b1141e608762b21233052a719785d14cd4ab9b77479db3852616` (verifiable build).
+- **Fee addresses (multisigs).**
+  - EVM Safe: primary `0x02FDb629Dc017D3f115D82704cE34aD8b15773aC`, backup `0x9178411cDa785999a512f60434fdDaA3E054aa15`.
+  - Tron multisig: primary `TVxwn29oqnwL8ar7Ramh5htLDSnoeK2udt`, backup `TDzHd4THdZ6RU2BVq7z4mK4RGPMg7nntgt`.
+  - Solana Squads: primary `CHTNf9xF8fLj7YSAFvwyyuXw43gE4Nfg6Qa2sWCDpAvA`, backup `DWJ6THXUEXmrYBFb8Tx8ZHqddwcwdHgpcEZ1TFkjw4Ac`.
+- **Check it yourself.** `GET /receivers` returns each receiver's `address`, `contract.address` (factory or
+  program), `fee_recipient`, `fee_recipient_backup` and `fee_bps`; compare them with the list above.
+- **Audit status.** Not yet externally audited.
+  Sources: `contracts/`, `solana/`, `contracts/AUDIT.md` in the repository.
+
+## 4. Other useful endpoints
+
+```
+GET  /assets                              the assets of one mode (key's mode, else CoinVello-Livemode header,
+                                          default live): id, symbol, chain, kind, contract_address,
+                                          decimals, required_confirmations, min_amount, testnet, wallet_type
+GET  /rates?base=USD&assets=btc:bitcoin   indicative mid-market rates
+POST /rates/quotes, POST /rates/locks     binding quote / lock (attach via invoice.rate_lock_id)
+GET  /payments?invoice_id=&status=&chain=&tx_hash=   and GET /payments/{id}
+GET  /wallets, GET/PATCH/DELETE /wallets/{id}, GET /wallets/{id}/addresses,
+     POST /wallets/{id}/verification + POST /wallets/{id}/verify (optional ownership proof)
+GET  /webhooks, GET/PATCH/DELETE /webhooks/{id}, GET /webhooks/{id}/deliveries,
+     POST /webhooks/{id}/deliveries/{delivery_id}/retry
+GET  /events, GET /events/{id}            backfill after an outage
+POST /refunds, GET /refunds/{id}, POST /refunds/{id}/submit    non-custodial: CoinVello prepares, you sign
+POST /conversions/quotes, POST /conversions, POST /conversions/{id}/submit   optional swaps to stablecoins
+GET  /offramp/providers, POST /offramp/accounts, POST /offramp/payouts     optional fiat via your partner account
+GET  /records?occurred_gte=&occurred_lte=&type=&currency=   bookkeeping/tax book of record: one immutable row per movement
+                                          (payment received, refund sent, fee, credit purchase...), valued at the time
+GET  /records/summary?period_start=&period_end=   sales, received (market value), refunds, fees, net for a period
+POST /exports { dataset, format: csv|xlsx|json, preset, period }   whole history or a date range; poll GET /exports/{id}
+                                          or listen for export.ready; presets quickbooks|xero|koinly|cointracker|coinledger
+```
+
+## 5. Errors
+
+HTTP status + `error.type` + `error.code`. Branch on `type` first, then `code`.
+
+```
+400 invalid_request_error   parameter_missing, parameter_invalid, parameter_unknown, amount_too_small, amount_too_large,
+                            currency_unsupported, metadata_too_large
+401 authentication_error    api_key_missing, api_key_invalid, api_key_revoked, api_key_expired
+402 credits_error           insufficient_credits (details.available, details.required, details.bundles_url)
+403 permission_error        insufficient_scope, test_mode_only, live_mode_only, merchant_suspended, ip_not_allowed
+404 invalid_request_error   resource_missing
+409 invalid_request_error   invalid_state, quote_expired, rate_lock_expired, rate_lock_used
+409 idempotency_error       idempotency_key_reused (same key, different body), idempotency_key_in_progress (retry shortly)
+422 invalid_request_error   asset_not_enabled, xpub_required, xpub_invalid, xprv_rejected, address_invalid,
+                            derivation_path_invalid, signature_invalid, challenge_expired, url_insecure, destination_invalid
+429 rate_limit_error        rate_limited (honour Retry-After)
+5xx api_error / chain_error / partner_error   retry with backoff
+```
+
+Example:
+
+```json
+{ "error": { "type": "invalid_request_error", "code": "parameter_invalid", "message": "amount must be a decimal string",
+             "param": "amount", "request_id": "req_7Hq2kLm9", "doc_url": "https://coinvello.com/docs/errors#parameter_invalid" } }
+```
+
+Retry policy: retry connection errors, `409 idempotency_key_in_progress`, `429` and `5xx` with
+exponential backoff and the same `Idempotency-Key`. Do not retry 400/401/403/404/422.
+
+## 6. Complete examples
+
+### 6.1 curl in 60 seconds (works against the local mock too: B=http://localhost:4242/v1)
+
+```bash
+B=https://api.coinvello.com/v1; K="Authorization: Bearer $COINVELLO_API_KEY"; J="Content-Type: application/json"
+# 1. webhook endpoint (store .secret)
+curl -s $B/webhooks -H "$K" -H "$J" -d '{"url":"https://example.com/webhooks/coinvello","events":["*"]}'
+# 2. checkout session -> send customer to .url
+CS=$(curl -s $B/checkout-sessions -H "$K" -H "$J" -H "Idempotency-Key: demo-1" \
+  -d '{"amount":"49.99","currency":"USD","accepted_assets":["btc:bitcoin","usdt:tron"],"order_id":"DEMO-1","success_url":"https://example.com/thanks"}')
+echo "$CS"; INV=$(echo "$CS" | sed -n 's/.*"invoice_id":"\([^"]*\)".*/\1/p')
+# 3. simulate payment (test keys only)
+curl -s $B/test/simulate_payment -H "$K" -H "$J" -d "{\"invoice_id\":\"$INV\",\"asset\":\"usdt:tron\",\"confirmations\":19}"
+# 4. check
+curl -s $B/invoices/$INV -H "$K"
+```
+
+### 6.2 Node (Express, no SDK)
+
+```js
+import express from "express";
+import crypto from "node:crypto";
+
+const API = process.env.COINVELLO_API_BASE ?? "https://api.coinvello.com/v1";
+const KEY = process.env.COINVELLO_API_KEY;             // cv_test_... or cv_live_...
+const SECRET = process.env.COINVELLO_WEBHOOK_SECRET;   // whsec_...
+const app = express();
+
+async function cv(method, path, body, idempotencyKey) {
+  const res = await fetch(API + path, {
+    method,
+    headers: { Authorization: `Bearer ${KEY}`, "Content-Type": "application/json",
+               ...(idempotencyKey ? { "Idempotency-Key": idempotencyKey } : {}) },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const json = await res.json();
+  if (!res.ok) throw Object.assign(new Error(json.error?.message ?? res.statusText), { error: json.error, status: res.status });
+  return json;
+}
+
+// 1. start a payment: create a checkout session and redirect
+app.post("/pay/:orderId", express.json(), async (req, res) => {
+  const order = await loadOrder(req.params.orderId);               // your code
+  const session = await cv("POST", "/checkout-sessions", {
+    amount: order.total,                                            // decimal string, e.g. "49.99"
+    currency: "USD",
+    accepted_assets: ["btc:bitcoin", "eth:ethereum", "usdc:polygon", "usdt:tron"],
+    order_id: order.id,
+    success_url: `https://shop.example.com/orders/${order.id}/thanks`,
+    cancel_url: `https://shop.example.com/orders/${order.id}`,
+    metadata: { order_id: String(order.id) },
+  }, `order-${order.id}-checkout`);
+  await saveCheckoutSession(order.id, session.id, session.invoice_id);
+  res.redirect(303, session.url);
+});
+
+// 2. webhook: raw body, verify, dedupe, fulfil on invoice.paid
+app.post("/webhooks/coinvello", express.raw({ type: "application/json" }), async (req, res) => {
+  let event;
+  try { event = verifyCoinVelloSignature(req.body, req.get("CoinVello-Signature"), SECRET); }
+  catch (e) { return res.status(400).send(`Webhook error: ${e.message}`); }
+  if (await alreadyProcessed(event.id)) return res.sendStatus(200);
+  const inv = event.data.object;
+  switch (event.type) {
+    case "invoice.paid":      await markOrderPaid(inv.order_id, inv); break;
+    case "invoice.underpaid":
+    case "invoice.overpaid":
+    case "invoice.expired":   await flagOrder(inv.order_id, event.type); break;
+  }
+  await rememberProcessed(event.id);
+  res.sendStatus(200);
+});
+
+function verifyCoinVelloSignature(rawBody, header, secret, toleranceSec = 300) { /* section 2.5 */ }
+app.listen(3000);
+```
+
+With the SDK (`npm install @coinvello/sdk`): `import { CoinVello } from "@coinvello/sdk"; const cv = new CoinVello(KEY);`
+`await cv.checkoutSessions.create({...}, { idempotencyKey })`, `cv.webhooks.constructEvent(raw, header, secret)`.
+
+### 6.3 Python (FastAPI, no SDK)
+
+```python
+import os, hmac, hashlib, json, time
+import httpx
+from fastapi import FastAPI, Request, HTTPException
+from fastapi.responses import RedirectResponse
+
+API = os.environ.get("COINVELLO_API_BASE", "https://api.coinvello.com/v1")
+KEY = os.environ["COINVELLO_API_KEY"]
+SECRET = os.environ["COINVELLO_WEBHOOK_SECRET"]
+app = FastAPI()
+
+async def cv(method: str, path: str, body: dict | None = None, idempotency_key: str | None = None) -> dict:
+    headers = {"Authorization": f"Bearer {KEY}", "Content-Type": "application/json"}
+    if idempotency_key:
+        headers["Idempotency-Key"] = idempotency_key
+    async with httpx.AsyncClient(timeout=20) as client:
+        r = await client.request(method, API + path, json=body, headers=headers)
+    data = r.json()
+    if r.status_code >= 400:
+        raise HTTPException(502, data.get("error", {}).get("message", "CoinVello error"))
+    return data
+
+@app.post("/pay/{order_id}")
+async def pay(order_id: str):
+    order = load_order(order_id)  # your code; order["total"] is a decimal string like "49.99"
+    session = await cv("POST", "/checkout-sessions", {
+        "amount": order["total"], "currency": "USD",
+        "accepted_assets": ["btc:bitcoin", "eth:ethereum", "usdc:polygon", "usdt:tron"],
+        "order_id": order_id,
+        "success_url": f"https://shop.example.com/orders/{order_id}/thanks",
+        "cancel_url": f"https://shop.example.com/orders/{order_id}",
+        "metadata": {"order_id": order_id},
+    }, idempotency_key=f"order-{order_id}-checkout")
+    save_checkout_session(order_id, session["id"], session["invoice_id"])
+    return RedirectResponse(session["url"], status_code=303)
+
+@app.post("/webhooks/coinvello")
+async def webhook(request: Request):
+    raw = await request.body()
+    try:
+        event = verify_coinvello_signature(raw, request.headers.get("CoinVello-Signature", ""), SECRET)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    if already_processed(event["id"]):
+        return {"ok": True}
+    inv = event["data"]["object"]
+    if event["type"] == "invoice.paid":
+        mark_order_paid(inv["order_id"], inv)
+    elif event["type"] in ("invoice.underpaid", "invoice.overpaid", "invoice.expired"):
+        flag_order(inv["order_id"], event["type"])
+    remember_processed(event["id"])
+    return {"ok": True}
+
+def verify_coinvello_signature(raw_body: bytes, header: str, secret: str, tolerance: int = 300) -> dict:
+    ...  # section 2.5
+```
+
+With the SDK (`pip install https://coinvello.com/downloads/sdk/coinvello-0.1.0-py3-none-any.whl`): `from coinvello import CoinVello; cv = CoinVello(KEY)`; `cv.checkout_sessions.create({...}, idempotency_key=...)`;
+`coinvello.Webhooks.construct_event(raw, header, secret)`.
+
+### 6.4 PHP (plain; same logic applies to Laravel / WordPress)
+
+```php
+<?php
+// pay.php - create a checkout session and redirect
+$api = getenv('COINVELLO_API_BASE') ?: 'https://api.coinvello.com/v1';
+$key = getenv('COINVELLO_API_KEY');
+
+function cv_request(string $method, string $path, ?array $body = null, ?string $idem = null): array {
+    global $api, $key;
+    $headers = ['Authorization: Bearer ' . $key, 'Content-Type: application/json'];
+    if ($idem) { $headers[] = 'Idempotency-Key: ' . $idem; }
+    $ch = curl_init($api . $path);
+    curl_setopt_array($ch, [
+        CURLOPT_CUSTOMREQUEST => $method, CURLOPT_HTTPHEADER => $headers, CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_POSTFIELDS => $body === null ? null : json_encode($body), CURLOPT_TIMEOUT => 20,
+    ]);
+    $raw = curl_exec($ch); $status = curl_getinfo($ch, CURLINFO_RESPONSE_CODE); curl_close($ch);
+    $json = json_decode((string) $raw, true) ?? [];
+    if ($status >= 400) { throw new RuntimeException($json['error']['message'] ?? 'CoinVello error', $status); }
+    return $json;
+}
+
+$order = load_order($_GET['order_id']);                 // your code
+$session = cv_request('POST', '/checkout-sessions', [
+    'amount'          => $order['total'],               // decimal string "49.99"
+    'currency'        => 'USD',
+    'accepted_assets' => ['btc:bitcoin', 'eth:ethereum', 'usdc:polygon', 'usdt:tron'],
+    'order_id'        => (string) $order['id'],
+    'success_url'     => 'https://shop.example.com/orders/' . $order['id'] . '/thanks',
+    'cancel_url'      => 'https://shop.example.com/orders/' . $order['id'],
+    'metadata'        => ['order_id' => (string) $order['id']],
+], 'order-' . $order['id'] . '-checkout');
+save_checkout_session($order['id'], $session['id'], $session['invoice_id']);
+header('Location: ' . $session['url'], true, 303);
+exit;
+```
+
+```php
+<?php
+// webhook.php - raw body, verify (function from section 2.5), dedupe, fulfil
+$raw    = file_get_contents('php://input');            // never $_POST
+$header = $_SERVER['HTTP_COINVELLO_SIGNATURE'] ?? '';
+try {
+    $event = coinvello_verify($raw, $header, getenv('COINVELLO_WEBHOOK_SECRET'));
+} catch (Throwable $e) {
+    http_response_code(400); exit('Webhook error: ' . $e->getMessage());
+}
+if (already_processed($event['id'])) { http_response_code(200); exit; }
+$inv = $event['data']['object'];
+if ($event['type'] === 'invoice.paid') {
+    mark_order_paid($inv['order_id'], $inv);
+} elseif (in_array($event['type'], ['invoice.underpaid', 'invoice.overpaid', 'invoice.expired'], true)) {
+    flag_order($inv['order_id'], $event['type']);
+}
+remember_processed($event['id']);
+http_response_code(200);
+```
+
+With the SDK (`composer config repositories.coinvello composer https://coinvello.com/composer && composer require coinvello/sdk`): `$cv = new \CoinVello\Sdk\Client($key);`
+`$cv->checkoutSessions->create([...], ['idempotency_key' => ...]);` `\CoinVello\Sdk\Webhooks::constructEvent($raw, $header, $secret)`.
+
+## 7. Embedded checkout and plugins (when not to write API code)
+
+- **Embeddable widget** `@coinvello/checkout`: your server creates the session; the browser calls
+  `CoinVelloCheckout.redirect(sessionId)`, `.open(sessionId)` (modal) or `.mount(el, sessionId)`
+  (inline), or uses `<coinvello-pay-button session="cs_...">`. The widget only needs the session id;
+  it talks to the public endpoints and never sees your API key.
+- **Plugins**: WooCommerce is available now (https://coinvello.com/integrations/woocommerce, zip download
+  with SHA-256); Shopify is pending Shopify Payments approval; Magento 2, PrestaShop and OpenCart are in
+  testing and not yet available. If the merchant runs WooCommerce, install the plugin and paste the API
+  key; do not write custom code. For the others, use the API or SDKs until the plugin ships.
+
+## 8. Go-live checklist
+
+1. Live wallets registered with a `cv_live_` key (verification optional; for xpubs, `first_address`
+   matches the wallet's first receive address).
+2. Credits bought (`GET /credits/bundles`, `POST /credits/purchases`, pay the option).
+3. Live webhook endpoint over HTTPS created; secret stored; handler verifies signature, dedupes on
+   `event.id`, responds 2xx in < 10 s, and fulfils only on `invoice.paid`.
+4. `Idempotency-Key` set on every POST; amounts are strings; API key only on the server.
+5. Swap `cv_test_` for `cv_live_`. There is no account review step.
+
+## 9. Links
+
+- Website https://coinvello.com · Build with AI https://coinvello.com/ai · Dashboard https://coinvello.com/app
+- OpenAPI https://coinvello.com/.well-known/openapi.yaml · MCP descriptor https://coinvello.com/.well-known/mcp.json
+- Plugins https://coinvello.com/integrations (WooCommerce zip: https://coinvello.com/downloads/coinvello-for-woocommerce-1.0.4.zip) · Developer docs https://coinvello.com/developers · llms.txt index https://coinvello.com/llms.txt
+- Support support@coinvello.com · Status https://status.coinvello.com

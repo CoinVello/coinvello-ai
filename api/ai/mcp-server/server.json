@@ -1,0 +1,39 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.CoinVello/coinvello",
+  "title": "CoinVello",
+  "description": "Non-custodial crypto payments: checkout sessions, invoices, webhooks and test payments. No KYC.",
+  "websiteUrl": "https://coinvello.com/ai",
+  "repository": { "url": "https://github.com/CoinVello/coinvello-ai", "source": "github", "subfolder": "api/ai/mcp-server" },
+  "version": "0.1.1",
+  "packages": [
+    {
+      "registryType": "npm",
+      "registryBaseUrl": "https://registry.npmjs.org",
+      "identifier": "@coinvello/mcp",
+      "version": "0.1.1",
+      "transport": { "type": "stdio" },
+      "environmentVariables": [
+        {
+          "name": "COINVELLO_API_KEY",
+          "description": "CoinVello API key. Use a cv_test_ key while developing; cv_live_ keys are refused unless COINVELLO_ALLOW_LIVE=1.",
+          "isRequired": true,
+          "isSecret": true,
+          "format": "string"
+        },
+        {
+          "name": "COINVELLO_API_BASE",
+          "description": "API base URL. Default https://api.coinvello.com/v1; http://localhost:4242/v1 for the local reference server.",
+          "isRequired": false,
+          "format": "string"
+        },
+        {
+          "name": "COINVELLO_ALLOW_LIVE",
+          "description": "Set to 1 to allow a live key.",
+          "isRequired": false,
+          "format": "boolean"
+        }
+      ]
+    }
+  ]
+}

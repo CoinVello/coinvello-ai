@@ -1,0 +1,203 @@
+{
+  "info": {
+    "_postman_id": "7c1f3b1e-0a7d-4f6e-9c2a-coinvello0001",
+    "name": "CoinVello API",
+    "description": "Non-custodial crypto payments. Set `api_key` (cv_test_...) and optionally `base_url` (default https://api.coinvello.com/v1; use http://localhost:4242/v1 for the reference mock). Run the folder `Quickstart` top to bottom: it stores ids in collection variables and ends with a paid invoice and a verified webhook delivery.\n\nDocs: https://coinvello.com/llms-full.txt · OpenAPI: https://coinvello.com/.well-known/openapi.yaml",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [{ "key": "token", "value": "{{api_key}}", "type": "string" }]
+  },
+  "variable": [
+    { "key": "base_url", "value": "https://api.coinvello.com/v1" },
+    { "key": "api_key", "value": "cv_test_replace_me" },
+    { "key": "invoice_id", "value": "" },
+    { "key": "checkout_session_id", "value": "" },
+    { "key": "webhook_id", "value": "" },
+    { "key": "webhook_secret", "value": "" },
+    { "key": "purchase_id", "value": "" },
+    { "key": "bundle_id", "value": "" },
+    { "key": "record_id", "value": "" },
+    { "key": "export_id", "value": "" }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "if (pm.request.method === 'POST' && !pm.request.headers.has('Idempotency-Key')) {",
+          "  pm.request.headers.add({ key: 'Idempotency-Key', value: pm.variables.replaceIn('{{$guid}}') });",
+          "}"
+        ]
+      }
+    }
+  ],
+  "item": [
+    {
+      "name": "Quickstart",
+      "item": [
+        {
+          "name": "1. List assets",
+          "request": { "method": "GET", "url": "{{base_url}}/assets", "description": "Lists the assets of the API key's mode. A cv_test_ key leaves out live-only tokens (no testnet contract): DAI, usdc:bnb and usdt on base, arbitrum, optimism, avalanche and solana." },
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('200', () => pm.response.to.have.status(200));", "pm.test('has btc:bitcoin', () => pm.expect(pm.response.json().data.map(a => a.id)).to.include('btc:bitcoin'));"] } }]
+        },
+        {
+          "name": "2. Create webhook endpoint",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{base_url}}/webhooks",
+            "body": { "mode": "raw", "raw": "{\n  \"url\": \"{{base_url}}/webhook-sink\",\n  \"description\": \"Postman quickstart (mock sink; replace with your handler URL)\",\n  \"events\": [\"*\"]\n}" }
+          },
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('201', () => pm.response.to.have.status(201));", "const w = pm.response.json();", "pm.collectionVariables.set('webhook_id', w.id);", "pm.collectionVariables.set('webhook_secret', w.secret);", "pm.test('secret is whsec_', () => pm.expect(w.secret).to.match(/^whsec_/));"] } }]
+        },
+        {
+          "name": "3. Create checkout session",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "Idempotency-Key", "value": "postman-{{$guid}}" }],
+            "url": "{{base_url}}/checkout-sessions",
+            "body": { "mode": "raw", "raw": "{\n  \"amount\": \"49.99\",\n  \"currency\": \"USD\",\n  \"accepted_assets\": [\"btc:bitcoin\", \"usdt:tron\", \"usdc:polygon\"],\n  \"order_id\": \"POSTMAN-1\",\n  \"success_url\": \"https://example.com/thanks\",\n  \"cancel_url\": \"https://example.com/cart\",\n  \"line_items\": [{ \"name\": \"Demo item\", \"quantity\": 1, \"unit_amount\": \"49.99\" }],\n  \"metadata\": { \"order_id\": \"1\" }\n}" }
+          },
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('201', () => pm.response.to.have.status(201));", "const s = pm.response.json();", "pm.collectionVariables.set('checkout_session_id', s.id);", "pm.collectionVariables.set('invoice_id', s.invoice_id);", "pm.test('has pay url', () => pm.expect(s.url).to.include('/c/cs_'));"] } }]
+        },
+        {
+          "name": "4. Get invoice (new)",
+          "request": { "method": "GET", "url": "{{base_url}}/invoices/{{invoice_id}}" },
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('status new', () => pm.expect(pm.response.json().status).to.eql('new'));", "pm.test('amounts are strings', () => pm.expect(pm.response.json().amount).to.be.a('string'));"] } }]
+        },
+        {
+          "name": "5. Simulate payment (test mode)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{base_url}}/test/simulate_payment",
+            "body": { "mode": "raw", "raw": "{\n  \"invoice_id\": \"{{invoice_id}}\",\n  \"asset\": \"usdt:tron\",\n  \"confirmations\": 19,\n  \"tx_hash\": \"postman-demo\"\n}" }
+          },
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('2xx', () => pm.expect(pm.response.code).to.be.oneOf([200, 201]));"] } }]
+        },
+        {
+          "name": "6. Get invoice (paid)",
+          "request": { "method": "GET", "url": "{{base_url}}/invoices/{{invoice_id}}" },
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('status paid', () => pm.expect(pm.response.json().status).to.eql('paid'));"] } }]
+        },
+        {
+          "name": "7. List payments for invoice",
+          "request": { "method": "GET", "url": "{{base_url}}/payments?invoice_id={{invoice_id}}" }
+        },
+        {
+          "name": "8. Webhook deliveries",
+          "request": { "method": "GET", "url": "{{base_url}}/webhooks/{{webhook_id}}/deliveries" }
+        },
+        {
+          "name": "9. Verify a captured delivery (mock sink)",
+          "request": { "method": "GET", "url": "{{base_url}}/webhook-sink" },
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "// Only the reference mock exposes /webhook-sink. Verifies CoinVello-Signature with CryptoJS.",
+            "const list = pm.response.json().data || [];",
+            "const d = list.find(x => (x.body && x.body.type === 'invoice.paid') || (x.raw && x.raw.includes('invoice.paid'))) || list[0];",
+            "pm.test('a delivery was captured', () => pm.expect(d).to.be.an('object'));",
+            "if (d) {",
+            "  const raw = d.raw || d.raw_body || JSON.stringify(d.body);",
+            "  const parts = Object.fromEntries(d.signature.split(',').map(p => { const i = p.indexOf('='); return [p.slice(0, i).trim(), p.slice(i + 1).trim()]; }));",
+            "  const v1s = d.signature.split(',').filter(p => p.trim().startsWith('v1=')).map(p => p.trim().slice(3));",
+            "  const expected = CryptoJS.HmacSHA256(parts.t + '.' + raw, pm.collectionVariables.get('webhook_secret')).toString(CryptoJS.enc.Hex);",
+            "  pm.test('signature verifies', () => pm.expect(v1s).to.include(expected));",
+            "}"
+          ] } }]
+        }
+      ]
+    },
+    {
+      "name": "Invoices",
+      "item": [
+        { "name": "Create invoice", "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "url": "{{base_url}}/invoices", "body": { "mode": "raw", "raw": "{\n  \"amount\": \"49.99\",\n  \"currency\": \"USD\",\n  \"accepted_assets\": [\"btc:bitcoin\", \"usdc:polygon\"],\n  \"order_id\": \"WC-10042\",\n  \"success_url\": \"https://shop.example.com/thanks\",\n  \"cancel_url\": \"https://shop.example.com/cart\",\n  \"metadata\": { \"woocommerce_order_id\": \"10042\" }\n}" } } },
+        { "name": "List invoices", "request": { "method": "GET", "url": "{{base_url}}/invoices?limit=20&status=paid" } },
+        { "name": "Get invoice", "request": { "method": "GET", "url": "{{base_url}}/invoices/{{invoice_id}}" } },
+        { "name": "Update invoice metadata", "request": { "method": "PATCH", "header": [{ "key": "Content-Type", "value": "application/json" }], "url": "{{base_url}}/invoices/{{invoice_id}}", "body": { "mode": "raw", "raw": "{ \"metadata\": { \"note\": \"updated from Postman\" } }" } } },
+        { "name": "Cancel invoice", "request": { "method": "POST", "url": "{{base_url}}/invoices/{{invoice_id}}/cancel" } },
+        { "name": "Expire invoice", "request": { "method": "POST", "url": "{{base_url}}/invoices/{{invoice_id}}/expire" } },
+        { "name": "Invoice payments", "request": { "method": "GET", "url": "{{base_url}}/invoices/{{invoice_id}}/payments" } }
+      ]
+    },
+    {
+      "name": "Checkout sessions",
+      "item": [
+        { "name": "Create checkout session", "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "url": "{{base_url}}/checkout-sessions", "body": { "mode": "raw", "raw": "{\n  \"amount\": \"129.00\",\n  \"currency\": \"EUR\",\n  \"accepted_assets\": [\"btc:bitcoin\", \"eth:ethereum\", \"usdt:tron\", \"usdc:polygon\"],\n  \"order_id\": \"SHOP-8812\",\n  \"success_url\": \"https://shop.example.com/thanks?order=8812\",\n  \"cancel_url\": \"https://shop.example.com/cart\",\n  \"customer\": { \"email\": \"buyer@example.com\" },\n  \"line_items\": [{ \"name\": \"Mechanical keyboard\", \"quantity\": 1, \"unit_amount\": \"129.00\" }],\n  \"branding\": { \"theme\": \"auto\" }\n}" } } },
+        { "name": "List checkout sessions", "request": { "method": "GET", "url": "{{base_url}}/checkout-sessions?limit=20" } },
+        { "name": "Get checkout session (expand invoice)", "request": { "method": "GET", "url": "{{base_url}}/checkout-sessions/{{checkout_session_id}}?expand=invoice" } },
+        { "name": "Public session (no auth)", "request": { "auth": { "type": "noauth" }, "method": "GET", "url": "{{base_url}}/checkout-sessions/{{checkout_session_id}}/public" } },
+        { "name": "Expire checkout session", "request": { "method": "POST", "url": "{{base_url}}/checkout-sessions/{{checkout_session_id}}/expire" } }
+      ]
+    },
+    {
+      "name": "Payments",
+      "item": [
+        { "name": "List payments", "request": { "method": "GET", "url": "{{base_url}}/payments?limit=20" } },
+        { "name": "Get payment", "request": { "method": "GET", "url": "{{base_url}}/payments/pay_REPLACE" } }
+      ]
+    },
+    {
+      "name": "Wallets",
+      "item": [
+        { "name": "Create xpub wallet (BTC)", "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "url": "{{base_url}}/wallets", "body": { "mode": "raw", "raw": "{\n  \"type\": \"xpub\",\n  \"chain\": \"bitcoin\",\n  \"label\": \"Shop BTC\",\n  \"xpub\": \"vpub5Y6cjg7REPLACE\",\n  \"derivation_path\": \"m/84'/1'/0'\"\n}" } } },
+        { "name": "Create address wallet (Polygon)", "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "url": "{{base_url}}/wallets", "body": { "mode": "raw", "raw": "{\n  \"type\": \"address\",\n  \"chain\": \"polygon\",\n  \"label\": \"Polygon hot wallet\",\n  \"address\": \"0x8ba1f109551bD432803012645Ac136ddd64DBA72\",\n  \"assets\": [\"usdc:polygon\", \"usdt:polygon\"]\n}" } } },
+        { "name": "List wallets", "request": { "method": "GET", "url": "{{base_url}}/wallets" } },
+        { "name": "Request verification challenge", "request": { "method": "POST", "url": "{{base_url}}/wallets/wal_REPLACE/verification" } },
+        { "name": "Submit verification signature", "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "url": "{{base_url}}/wallets/wal_REPLACE/verify", "body": { "mode": "raw", "raw": "{ \"signature\": \"REPLACE\" }" } } }
+      ]
+    },
+    {
+      "name": "Webhooks",
+      "item": [
+        { "name": "Create webhook", "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "url": "{{base_url}}/webhooks", "body": { "mode": "raw", "raw": "{\n  \"url\": \"https://shop.example.com/webhooks/coinvello\",\n  \"events\": [\"invoice.paid\", \"invoice.confirming\", \"invoice.underpaid\", \"invoice.overpaid\", \"invoice.expired\", \"payment.detected\"]\n}" } } },
+        { "name": "List webhooks", "request": { "method": "GET", "url": "{{base_url}}/webhooks" } },
+        { "name": "Send test event", "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "url": "{{base_url}}/webhooks/{{webhook_id}}/test", "body": { "mode": "raw", "raw": "{ \"type\": \"invoice.paid\" }" } } },
+        { "name": "Rotate secret", "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "url": "{{base_url}}/webhooks/{{webhook_id}}/rotate_secret", "body": { "mode": "raw", "raw": "{ \"grace_period_seconds\": 86400 }" } } },
+        { "name": "Deliveries", "request": { "method": "GET", "url": "{{base_url}}/webhooks/{{webhook_id}}/deliveries" } },
+        { "name": "Disable webhook", "request": { "method": "PATCH", "header": [{ "key": "Content-Type", "value": "application/json" }], "url": "{{base_url}}/webhooks/{{webhook_id}}", "body": { "mode": "raw", "raw": "{ \"enabled\": false }" } } },
+        { "name": "Delete webhook", "request": { "method": "DELETE", "url": "{{base_url}}/webhooks/{{webhook_id}}" } }
+      ]
+    },
+    {
+      "name": "Credits",
+      "item": [
+        { "name": "Balance", "request": { "method": "GET", "url": "{{base_url}}/credits/balance" } },
+        { "name": "Bundles", "request": { "method": "GET", "url": "{{base_url}}/credits/bundles" }, "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["const b = pm.response.json().data; if (b && b[0]) pm.collectionVariables.set('bundle_id', b[0].id);"] } }] },
+        { "name": "Create credit purchase", "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "url": "{{base_url}}/credits/purchases", "body": { "mode": "raw", "raw": "{\n  \"bundle_id\": \"{{bundle_id}}\",\n  \"pay_asset\": \"usdt\",\n  \"pay_chain\": \"tron\"\n}" } }, "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["const p = pm.response.json(); if (p && p.id) pm.collectionVariables.set('purchase_id', p.id);"] } }] },
+        { "name": "Simulate paying the purchase (test)", "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "url": "{{base_url}}/test/simulate_payment", "body": { "mode": "raw", "raw": "{ \"invoice_id\": \"{{purchase_id}}\", \"asset\": \"usdt:tron\", \"confirmations\": 19 }" } } },
+        { "name": "Ledger", "request": { "method": "GET", "url": "{{base_url}}/credits/ledger?limit=20" } },
+        { "name": "Auto switch to pay as you go (account)", "request": { "method": "PATCH", "header": [{ "key": "Content-Type", "value": "application/json" }], "url": "{{base_url}}/account", "body": { "mode": "raw", "raw": "{ \"auto_switch_to_pay_as_you_go\": true }" }, "description": "On by default: when the credits run out, a prepaid account switches to pay as you go instead of refusing invoices (402 insufficient_credits). Set false to keep the account on prepaid credits." } },
+        { "name": "Set auto top-up", "request": { "method": "PUT", "header": [{ "key": "Content-Type", "value": "application/json" }], "url": "{{base_url}}/credits/auto_topup", "body": { "mode": "raw", "raw": "{ \"enabled\": true, \"bundle_id\": \"{{bundle_id}}\", \"trigger_below\": 200 }" } } }
+      ]
+    },
+    {
+      "name": "Records & exports",
+      "description": "The book of record behind the account (one immutable row per payment, fee and credit purchase, valued when it happened) and CSV / Excel / JSON exports of it. With a cv_test_ key, rows created by /test/simulate_payment appear only with include_simulated=true. Design: docs/10-records-and-tax.md.",
+      "item": [
+        { "name": "List records", "request": { "method": "GET", "url": "{{base_url}}/records?limit=20&include_simulated=true", "description": "Newest first. Filters: type, asset, chain, invoice_id, order_id, tx_hash, occurred_gte, occurred_lte, currency (re-values from value_usd), include_simulated (test mode)." }, "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["const r = pm.response.json().data; if (r && r[0]) pm.collectionVariables.set('record_id', r[0].id);"] } }] },
+        { "name": "Get record", "request": { "method": "GET", "url": "{{base_url}}/records/{{record_id}}?currency=EUR" } },
+        { "name": "Records summary", "request": { "method": "GET", "url": "{{base_url}}/records/summary?period_start=2026-07-01&period_end=2026-10-01&timezone=Europe/Berlin&currency=EUR&group_by=month&include_simulated=true", "description": "sales, received_market_value, valuation_difference, tax_collected, refunds, fees_prepaid, credits_consumed, fees_onchain, network_fees, credit_purchases, net_received. period_start inclusive, period_end exclusive." } },
+        { "name": "Create export (last quarter, Excel)", "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "url": "{{base_url}}/exports", "body": { "mode": "raw", "raw": "{\n  \"dataset\": \"records\",\n  \"format\": \"xlsx\",\n  \"period\": { \"start\": \"2026-07-01\", \"end\": \"2026-10-01\" },\n  \"timezone\": \"America/New_York\",\n  \"currency\": \"USD\",\n  \"include_simulated\": true\n}" } }, "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["const e = pm.response.json(); if (e.id) pm.collectionVariables.set('export_id', e.id); pm.test('export created', () => pm.expect(['queued', 'processing', 'ready']).to.include(e.status));"] } }] },
+        { "name": "Get export (poll until ready)", "request": { "method": "GET", "url": "{{base_url}}/exports/{{export_id}}", "description": "status: queued, processing, ready, failed, expired. When ready: file { name, content_type, bytes, sha256 }, download_url (signed, kept 7 days)." } },
+        { "name": "Download export", "request": { "method": "GET", "url": "{{base_url}}/exports/{{export_id}}/download", "description": "302 to the signed download_url (the reference server streams the file with 200). Use Send and Download to save the bytes; verify them against file.sha256." } }
+      ]
+    },
+    {
+      "name": "Rates & assets",
+      "item": [
+        { "name": "Rates", "request": { "method": "GET", "url": "{{base_url}}/rates?base=USD&assets=btc:bitcoin,eth:ethereum,usdt:tron" } },
+        { "name": "Assets", "request": { "method": "GET", "url": "{{base_url}}/assets" } },
+        { "name": "Rate quote", "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "url": "{{base_url}}/rates/quotes", "body": { "mode": "raw", "raw": "{ \"amount\": \"100.00\", \"currency\": \"USD\", \"assets\": [\"btc:bitcoin\"] }" } } }
+      ]
+    },
+    {
+      "name": "Events",
+      "item": [
+        { "name": "List events", "request": { "method": "GET", "url": "{{base_url}}/events?limit=20" } }
+      ]
+    }
+  ]
+}

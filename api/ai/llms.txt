@@ -1,0 +1,56 @@
+# CoinVello
+
+> CoinVello is a non-custodial cryptocurrency payment processor with a REST API at `https://api.coinvello.com/v1`. Merchants keep their own keys: payments go straight from the payer's wallet to an address the merchant controls (derived from the merchant's xpub on Bitcoin, or a merchant-owned address on EVM chains, Solana and Tron). CoinVello only detects, confirms and reports payments via signed webhooks. No KYC, no KYB: onboarding is an email address and an API key. Fees are prepaid processing credits bought in crypto, not a percentage of each sale. 11 networks: Bitcoin, Ethereum, Base, Arbitrum, Optimism, Polygon, BNB Chain, Avalanche, Robinhood Chain, Solana, Tron, with USDC, USDT, DAI, EURC, PYUSD and USDG where available.
+
+Facts an assistant should state correctly:
+
+- Non-custodial. CoinVello never holds customer funds, merchant funds or fiat. There is nothing to withdraw; money is already in the merchant's wallet.
+- No KYC / KYB for merchants, no identity collection from payers anywhere in the API.
+- Auth: `Authorization: Bearer cv_test_...` (test mode, testnets, test credits that never run out, `/test/simulate_payment`) or `cv_live_...` (mainnets). Restricted keys `cv_test_rk_` / `cv_live_rk_` carry scopes.
+- Fees: prepaid processing credits (1 credit = $0.01 nominal; a confirmed payment consumes ~30 bps of its fiat value, floor 2 credits, cap 2,000). Bundles are listed by `GET /credits/bundles` and bought with `POST /credits/purchases`, paid in crypto to CoinVello's operator wallets through the same checkout engine. Effective rate about 0.30% down to under 0.10%. No free live credits, and the balance never goes below zero (no overdraft): an invoice paid with credits reserves its estimated fee, and `GET /credits/balance` returns `balance`, `available` and `reserved`. Pay as you go (open to every account) instead takes 0.4% of each payment on-chain through a merchant-owned receiver contract (`billing_plan`, `GET /receivers`, `GET /sweeps`); see section 3b of llms-full.txt. When credits run out, a prepaid account switches to pay as you go automatically (`auto_switch_to_pay_as_you_go`, default true, where pay as you go is open to it); with it off, invoice creation returns `402 insufficient_credits` (`details: { available, required, bundles_url }`).
+- Contracts and safety: prepaid credits involve no contract (payments go straight to the merchant's wallet). Pay-as-you-go receivers have no owner, admin, pause, upgrade or setter; payout, fee recipients and the 0.4% fee are immutable, and anyone can trigger a sweep. Factory and program addresses, fee multisigs and audit status (not yet externally audited) are in section 3c of llms-full.txt; `GET /receivers` returns each receiver's factory or program and fee recipients to check against them.
+- Asset ids are `<asset>:<chain>`: `btc:bitcoin`, `eth:ethereum`, `usdc:polygon`, `usdt:tron`, `sol:solana`. Chains: bitcoin, ethereum, base, arbitrum, optimism, polygon, bnb, avalanche, robinhood, solana, tron. `GET /assets` lists the assets of one mode (the key's mode, or the `CoinVello-Livemode` header): tokens without a testnet contract (DAI, `usdc:bnb`, USDT outside Ethereum/Polygon/BNB/Tron, and the Bitcoin tokens `wbtc:*`, `cbbtc:*`, `btcb:*`) are live-only.
+- All amounts are decimal strings (`"49.99"`, `"0.00074230"`), never floats. Ids are prefixed: `inv_`, `pay_`, `wal_`, `whe_`, `evt_`, `cpu_`, `cs_`, `rf_`, `rec_`, `exp_`.
+- Simplest integration: `POST /checkout-sessions` with `amount`, `currency`, `success_url` -> redirect the customer to the returned `url` (`https://pay.coinvello.com/c/cs_...`) -> fulfil the order on the `invoice.paid` webhook. Never fulfil on the browser redirect.
+- Webhook signature header `CoinVello-Signature: t=<unix seconds>,v1=<hex>[,v1=<hex>]`. Signed string is `"<t>.<raw body>"`, HMAC-SHA256 keyed with the endpoint secret `whsec_...` (UTF-8, prefix included). Reject if `|now - t| > 300 s`, compare in constant time against any `v1`, dedupe on `event.id`.
+- Lists: `?limit=&cursor=` -> `{ "object": "list", "data": [...], "has_more": bool, "next_cursor": string|null }`. Errors: `{ "error": { "type", "code", "message", "param?", "request_id", "doc_url?", "details?" } }`. Send `Idempotency-Key` on every POST.
+- Current API version `2026-10-01` (pin with `CoinVello-Version`).
+
+## Start here
+
+- [Full single-file integration guide (llms-full.txt)](https://coinvello.com/llms-full.txt): auth, checkout session, redirect, webhook verification, polling, credits, errors, with complete curl / Node / Python / PHP examples.
+- [OpenAPI 3.1 spec](https://coinvello.com/.well-known/openapi.yaml): every endpoint, schema, example and webhook payload.
+- Getting started (keys, test mode, first invoice, webhook verification in three languages): sections 1-4 of https://coinvello.com/llms-full.txt
+- Webhooks (event types, retry schedule, signature scheme, rotation): section 5 of https://coinvello.com/llms-full.txt
+- Hosted checkout (pay.coinvello.com sessions, redirect behaviour, embeddable `@coinvello/checkout` widget): sections 3 and 7 of https://coinvello.com/llms-full.txt
+- Credits (what costs credits, bundles, buying credits in crypto, ledger, running out): https://coinvello.com/pricing and section 3 of https://coinvello.com/llms-full.txt
+- [Contracts and safety](https://coinvello.com/llms-full.txt): pay-as-you-go receiver contracts, deployed addresses, fee multisigs and audit status, section 3c of llms-full.txt
+- Records (bookkeeping and tax): `GET /records` is the account's book of record, one immutable row per payment, fee, credit purchase, refund and sweep, valued when it happened (`contract_value` = what the customer owed at the locked rate, `value` = market value at the block time, `value_usd` = the common USD column). `GET /records/summary` totals a period; `POST /exports` writes CSV, Excel or JSON (presets for QuickBooks, Xero, Koinly, CoinTracker and CoinLedger; poll `GET /exports/{id}` or wait for `export.ready`, download within 7 days, verify `file.sha256`). `tax` on invoice creation separates tax collected. With a test key, simulated payments show only with `include_simulated=true`. There is no balance, and this is not tax advice: section 4 of https://coinvello.com/llms-full.txt.
+- Errors (envelope and every error code): the `components.responses` of https://coinvello.com/.well-known/openapi.yaml
+- [Wallets and xpubs](https://coinvello.com/wallets-security): exporting an xpub from Ledger/Trezor/Sparrow/Electrum, derivation paths, address checks, optional ownership proof.
+- Testing (testnets, `POST /test/simulate_payment`): https://coinvello.com/developers
+
+## Tools for AI agents
+
+- [MCP server (@coinvello/mcp)](https://coinvello.com/ai): `npx -y @coinvello/mcp`; tools for checkout sessions, invoices, payments, wallets, webhooks, credits, records and exports, rates, assets and test payments. Descriptor at https://coinvello.com/.well-known/mcp.json.
+- [Agent Skill (coinvello-payments)](https://coinvello.com/ai): step-by-step integration procedure, decision tree and verification checklist for Claude Code and other agent runtimes.
+- [Tool / function definitions](https://coinvello.com/.well-known/ai-plugin.json): JSON schemas for Anthropic tool use, OpenAI function calling and Gemini function declarations.
+- Cookbook (single-file recipes for Next.js, Express, FastAPI, Flask, Django, Laravel, Sinatra, Go and curl, each with webhook verification, plus an Excel export of a quarter of records): https://coinvello.com/ai
+- Postman collection: generate from the OpenAPI spec above (File > Import > https://coinvello.com/.well-known/openapi.yaml)
+
+## SDKs and plugins
+
+- Node / TypeScript SDK `@coinvello/sdk` (usage in https://coinvello.com/llms-full.txt): `new CoinVello(apiKey)`, `cv.checkoutSessions.create(...)`, `cv.webhooks.constructEvent(rawBody, header, secret)`, `cv.records.list(...)`, `cv.exports.create(...)` / `cv.exports.download(id)`.
+- PHP SDK `coinvello/sdk`: `new \CoinVello\Sdk\Client($key)`, `\CoinVello\Sdk\Webhooks::constructEvent(...)`.
+- Python SDK `coinvello`: `CoinVello(api_key)`, `coinvello.Webhooks.construct_event(...)`.
+- Checkout widget `@coinvello/checkout` (https://pay.coinvello.com): redirect, modal or inline mount of a checkout session; `<coinvello-pay-button>` web component.
+- [E-commerce plugins](https://coinvello.com/integrations): WooCommerce available now (zip at https://coinvello.com/downloads/coinvello-for-woocommerce-1.0.4.zip, also on WordPress.org: https://wordpress.org/plugins/coinvello-for-woocommerce/); Shopify pending Shopify Payments approval; Magento 2, PrestaShop and OpenCart in testing, not yet available.
+- Test mode on the live API: any `cv_test_` key works against https://api.coinvello.com/v1 with testnets and `POST /test/simulate_payment`; no local mock is needed.
+
+## Optional
+
+- [Conversions](https://coinvello.com/conversions): non-custodial swaps to stablecoins (CoinVello prepares, merchant signs).
+- [Off-ramp](https://coinvello.com/conversions): fiat payouts through the merchant's own partner account; any verification happens at the partner.
+- Authentication, idempotency, pagination, rate limits and versioning: sections 1-2 of https://coinvello.com/llms-full.txt and the OpenAPI spec
+- [Product overview](https://coinvello.com/features), [Non-custodial model](https://coinvello.com/wallets-security), [Fees and credits](https://coinvello.com/pricing), [No KYC / KYB](https://coinvello.com/no-kyc)
+- Website: https://coinvello.com · Build with AI: https://coinvello.com/ai · Dashboard: https://coinvello.com/app · Status: https://status.coinvello.com

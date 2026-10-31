@@ -1,0 +1,50 @@
+{
+  "base_url": "https://api.coinvello.com/v1",
+  "auth_header": "Authorization: Bearer <COINVELLO_API_KEY>",
+  "tools": {
+    "coinvello_create_checkout_session": {
+      "method": "POST",
+      "path": "/checkout-sessions",
+      "idempotent": true
+    },
+    "coinvello_create_invoice": {
+      "method": "POST",
+      "path": "/invoices",
+      "idempotent": true
+    },
+    "coinvello_get_invoice": {
+      "method": "GET",
+      "path": "/invoices/{invoice_id}"
+    },
+    "coinvello_list_invoices": {
+      "method": "GET",
+      "path": "/invoices"
+    },
+    "coinvello_create_webhook": {
+      "method": "POST",
+      "path": "/webhooks",
+      "idempotent": true
+    },
+    "coinvello_simulate_test_payment": {
+      "method": "POST",
+      "path": "/test/simulate_payment"
+    },
+    "coinvello_list_records": {
+      "method": "GET",
+      "path": "/records"
+    },
+    "coinvello_get_records_summary": {
+      "method": "GET",
+      "path": "/records/summary"
+    },
+    "coinvello_create_export": {
+      "method": "POST",
+      "path": "/exports",
+      "idempotent": true
+    },
+    "coinvello_get_export": {
+      "method": "GET",
+      "path": "/exports/{export_id}"
+    }
+  }
+}
