@@ -17,6 +17,18 @@ npx -y @coinvello/mcp --http 3333  # Streamable HTTP on http://127.0.0.1:3333/mc
 npm install && npm run build && node dist/index.js
 ```
 
+## Documentation
+
+| | |
+|---|---|
+| Website and setup for AI assistants | https://coinvello.com/ai |
+| Complete integration guide (one file, written for LLMs) | https://coinvello.com/llms-full.txt |
+| Developer docs and SDKs | https://coinvello.com/developers |
+| OpenAPI 3.1 reference | https://coinvello.com/.well-known/openapi.yaml |
+| MCP Registry | `io.github.CoinVello/coinvello` |
+| Source | https://github.com/CoinVello/coinvello-ai (`api/ai/mcp-server`) |
+| Support | support@coinvello.com |
+
 ## Configuration
 
 | Variable | Required | Meaning |

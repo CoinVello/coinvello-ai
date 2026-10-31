@@ -5,13 +5,13 @@
   "description": "Non-custodial crypto payments: checkout sessions, invoices, webhooks and test payments. No KYC.",
   "websiteUrl": "https://coinvello.com/ai",
   "repository": { "url": "https://github.com/CoinVello/coinvello-ai", "source": "github", "subfolder": "api/ai/mcp-server" },
-  "version": "0.1.1",
+  "version": "0.1.2",
   "packages": [
     {
       "registryType": "npm",
       "registryBaseUrl": "https://registry.npmjs.org",
       "identifier": "@coinvello/mcp",
-      "version": "0.1.1",
+      "version": "0.1.2",
       "transport": { "type": "stdio" },
       "environmentVariables": [
         {
