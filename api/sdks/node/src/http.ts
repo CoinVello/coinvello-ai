@@ -13,7 +13,7 @@ export interface ClientOptions {
 
 export const DEFAULT_BASE_URL = "https://api.coinvello.com/v1";
 export const DEFAULT_API_VERSION = "2026-10-01";
-export const SDK_VERSION = "0.1.0";
+export const SDK_VERSION = "0.1.1";
 
 type Method = "GET" | "POST" | "PATCH" | "PUT" | "DELETE";
 

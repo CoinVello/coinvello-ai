@@ -15,7 +15,7 @@ import { CoinVelloApiError, CoinVelloClient } from "./client.js";
 import { verifyCoinVelloSignature } from "./verify.js";
 
 export const SERVER_NAME = "coinvello";
-export const SERVER_VERSION = "0.1.2";
+export const SERVER_VERSION = "0.1.3";
 
 export interface ServerConfig {
   apiKey?: string;
