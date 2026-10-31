@@ -103,6 +103,7 @@ with `simulate_test_payment`.
 | [`api/ai/postman`](api/ai/postman) | Postman collection with a runnable quickstart |
 | [`api/reference-server`](api/reference-server) | Mock API: `npm start`, then use `http://localhost:4242/v1` with any `cv_test_` key; signs real webhooks |
 | [`api/openapi.yaml`](api/openapi.yaml) | OpenAPI 3.1 reference for `https://api.coinvello.com/v1` |
+| [`api/sdks`](api/sdks) | Node, Python and PHP SDKs (`npm install @coinvello/sdk`, `pip install coinvello`) |
 
 SDKs: `npm install @coinvello/sdk`; Python and PHP install commands are on https://coinvello.com/developers.
 

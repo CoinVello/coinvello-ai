@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "coinvello"
+version = "0.1.0"
+description = "Official CoinVello API client for Python (non-custodial crypto payments)"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.9"
+authors = [{ name = "CoinVello", email = "developers@coinvello.com" }]
+keywords = ["coinvello", "crypto", "payments", "bitcoin", "ethereum", "webhooks"]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "License :: OSI Approved :: MIT License",
+  "Topic :: Office/Business :: Financial",
+]
+dependencies = []
+
+[project.urls]
+Homepage = "https://coinvello.com/developers"
+Documentation = "https://coinvello.com/developers"
+Source = "https://github.com/CoinVello/coinvello-ai/tree/main/api/sdks/python"
+Issues = "https://github.com/CoinVello/coinvello-ai/issues"
+
+[tool.setuptools.packages.find]
+include = ["coinvello*"]

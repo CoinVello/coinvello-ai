@@ -1,0 +1,27 @@
+{
+  "name": "@coinvello/sdk",
+  "version": "0.1.0",
+  "description": "Official CoinVello API client for Node.js and TypeScript (non-custodial crypto payments)",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": ["dist", "README.md"],
+  "engines": { "node": ">=18" },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "example": "node --loader ts-node/esm examples/create-invoice.ts"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.0",
+    "@types/node": "^20.14.0"
+  },
+  "keywords": ["coinvello", "crypto", "payments", "bitcoin", "ethereum", "non-custodial", "webhooks"]
+}
