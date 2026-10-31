@@ -37,6 +37,15 @@ Claude Code: `claude mcp add coinvello -e COINVELLO_API_KEY=cv_test_... -- npx -
 Live keys (`cv_live_`) are refused unless `COINVELLO_ALLOW_LIVE=1`. More clients and the Streamable
 HTTP mode: [`api/ai/mcp-server/README.md`](api/ai/mcp-server/README.md).
 
+## Screenshots
+
+The server in the MCP Inspector, creating a checkout session against the local mock API, and the
+hosted payment page that session opens:
+
+![CoinVello tools in the MCP Inspector](api/ai/mcp-server/screenshots/inspector-tools.png)
+![create_checkout_session result](api/ai/mcp-server/screenshots/inspector-checkout-session.png)
+![Hosted checkout page](api/ai/mcp-server/screenshots/hosted-checkout.png)
+
 ## Tools
 
 | Tool | Does |
