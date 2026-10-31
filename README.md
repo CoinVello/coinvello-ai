@@ -108,4 +108,4 @@ with `simulate_test_payment`.
 SDKs: `npm install @coinvello/sdk`; Python and PHP install commands are on https://coinvello.com/developers.
 
 This repository is a read-only mirror, synced from CoinVello's main repository. Issues are welcome;
-security reports go to security@coinvello.com.
+security reports go to support@coinvello.com.

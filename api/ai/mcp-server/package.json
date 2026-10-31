@@ -22,7 +22,8 @@
     "start:http": "node dist/index.js --http 3333",
     "dev": "tsx src/index.ts",
     "test": "node test/smoke.mjs",
-    "prepublishOnly": "npm run build"
+    "prepublishOnly": "npm run build",
+    "mcpb": "npm run build && node scripts/build-mcpb.mjs"
   },
   "keywords": [
     "mcp",

@@ -578,7 +578,7 @@ app.post("/v1/credits/purchases", h((req, res) => {
   const bundle = store.bundles.find((x) => x.id === b.bundle_id && x.enabled);
   if (!bundle) throw notFound("credit_bundle", b.bundle_id, "bundle_id");
   if (bundle.monthly) throw invalidState(`${bundle.id} is granted automatically every month and cannot be purchased.`);
-  if (bundle.contact_sales) throw invalidState(`${bundle.id} is priced individually - contact sales@coinvello.com.`);
+  if (bundle.contact_sales) throw invalidState(`${bundle.id} is priced individually - contact support@coinvello.com.`);
   let assets = ASSETS.map((a) => a.id);
   // The mock has no card processor: card purchases need the real backend (Square sandbox in test mode).
   if (b.payment_method) throw new ApiError(422, "card_error", "card_payments_unavailable", "Card payments are not available on the reference server.", "payment_method");
