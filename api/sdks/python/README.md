@@ -4,7 +4,7 @@ Dependency-free client for the [CoinVello API](../../openapi.yaml). Python 3.9+,
 `urllib` only.
 
 ```bash
-pip install https://coinvello.com/downloads/sdk/coinvello-0.1.0-py3-none-any.whl
+pip install coinvello
 ```
 
 ```python

@@ -96,7 +96,7 @@ implement exactly these pieces:
    `POST /credits/purchases`) or use pay as you go; `details` is `{ available, required, bundles_url }`.
 
 SDKs, if the user prefers them: `npm install @coinvello/sdk`, `composer config repositories.coinvello composer https://coinvello.com/composer && composer require coinvello/sdk`,
-`pip install https://coinvello.com/downloads/sdk/coinvello-0.1.0-py3-none-any.whl`. All expose `checkoutSessions.create` / `invoices.create` and
+`pip install coinvello`. All expose `checkoutSessions.create` / `invoices.create` and
 `webhooks.constructEvent(rawBody, header, secret)`.
 
 ## Step 5: verify (do not skip)
