@@ -3,6 +3,14 @@
   "description": "Official CoinVello API client for PHP (non-custodial crypto payments). No Guzzle: ext-curl only.",
   "type": "library",
   "license": "MIT",
+  "homepage": "https://coinvello.com/developers",
+  "authors": [{ "name": "CoinVello", "email": "support@coinvello.com", "homepage": "https://coinvello.com" }],
+  "support": {
+    "email": "support@coinvello.com",
+    "issues": "https://github.com/CoinVello/coinvello-php/issues",
+    "source": "https://github.com/CoinVello/coinvello-php",
+    "docs": "https://coinvello.com/developers"
+  },
   "keywords": ["coinvello", "crypto", "payments", "bitcoin", "woocommerce", "webhooks"],
   "require": {
     "php": ">=8.1",

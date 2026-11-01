@@ -1,11 +1,10 @@
 # coinvello/sdk (PHP)
 
-PSR-4 client for the [CoinVello API](../../openapi.yaml). PHP 8.1+, `ext-curl`, `ext-json`.
+PSR-4 client for the [CoinVello API](https://coinvello.com/.well-known/openapi.yaml). PHP 8.1+, `ext-curl`, `ext-json`.
 **No Guzzle** or other dependencies, so WordPress / WooCommerce plugins can vendor it safely.
 
 ```bash
-composer config repositories.coinvello composer https://coinvello.com/composer
-composer config repositories.coinvello composer https://coinvello.com/composer && composer require coinvello/sdk
+composer require coinvello/sdk
 ```
 
 ```php

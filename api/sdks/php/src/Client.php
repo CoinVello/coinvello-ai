@@ -28,7 +28,7 @@ use CoinVello\Sdk\Resource\WebhookEndpoints;
  */
 final class Client
 {
-    public const VERSION = '0.1.0';
+    public const VERSION = '0.1.1';
     public const DEFAULT_BASE_URL = 'https://api.coinvello.com/v1';
     public const DEFAULT_API_VERSION = '2026-10-01';
 

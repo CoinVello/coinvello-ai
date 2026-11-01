@@ -95,7 +95,7 @@ implement exactly these pieces:
    `402 insufficient_credits` means the merchant must buy credits (`GET /credits/bundles`,
    `POST /credits/purchases`) or use pay as you go; `details` is `{ available, required, bundles_url }`.
 
-SDKs, if the user prefers them: `npm install @coinvello/sdk`, `composer config repositories.coinvello composer https://coinvello.com/composer && composer require coinvello/sdk`,
+SDKs, if the user prefers them: `npm install @coinvello/sdk`, `composer require coinvello/sdk`,
 `pip install coinvello`. All expose `checkoutSessions.create` / `invoices.create` and
 `webhooks.constructEvent(rawBody, header, secret)`.
 

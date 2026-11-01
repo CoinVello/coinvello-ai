@@ -34,8 +34,8 @@ CoinVello (https://coinvello.com) is a **non-custodial crypto payment processor*
   DAI, `usdc:bnb` (Binance-Peg, 18 decimals), USDT on base, arbitrum (USD₮0), optimism, avalanche and
   solana, and every Bitcoin token (`wbtc:*`, `cbbtc:*`, `btcb:*`).
 - **Integration surfaces**: hosted checkout (pay.coinvello.com), embeddable widget
-  (`@coinvello/checkout`), REST API with SDKs (`@coinvello/sdk` on npm, `coinvello` on PyPI; `coinvello/sdk` from the Composer
-  repository at https://coinvello.com/composer until the Packagist release), plugins (WooCommerce available now; Shopify pending Shopify's approval; Magento 2, PrestaShop, OpenCart in testing),
+  (`@coinvello/checkout`), REST API with SDKs (`@coinvello/sdk` on npm, `coinvello` on PyPI; `coinvello/sdk` on
+  Packagist), plugins (WooCommerce available now; Shopify pending Shopify's approval; Magento 2, PrestaShop, OpenCart in testing),
   MCP server (`npx -y @coinvello/mcp`, or hosted at https://mcp.coinvello.com/mcp with your key in
   `Authorization: Bearer cv_test_...`; the hosted server stores nothing and accepts test keys only).
 
@@ -761,7 +761,7 @@ remember_processed($event['id']);
 http_response_code(200);
 ```
 
-With the SDK (`composer config repositories.coinvello composer https://coinvello.com/composer && composer require coinvello/sdk`): `$cv = new \CoinVello\Sdk\Client($key);`
+With the SDK (`composer require coinvello/sdk`): `$cv = new \CoinVello\Sdk\Client($key);`
 `$cv->checkoutSessions->create([...], ['idempotency_key' => ...]);` `\CoinVello\Sdk\Webhooks::constructEvent($raw, $header, $secret)`.
 
 ## 7. Embedded checkout and plugins (when not to write API code)

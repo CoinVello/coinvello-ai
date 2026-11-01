@@ -16,7 +16,7 @@ from .errors import ApiError, CoinVelloError, ConnectionError
 
 DEFAULT_BASE_URL = "https://api.coinvello.com/v1"
 DEFAULT_API_VERSION = "2026-10-01"
-SDK_VERSION = "0.1.0"
+SDK_VERSION = "0.1.1"
 
 JSON = Dict[str, Any]
 

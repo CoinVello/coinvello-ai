@@ -3174,6 +3174,158 @@ paths:
       responses:
         '204': { description: Session revoked }
 
+  /team:
+    get:
+      tags: [Account & Auth]
+      operationId: getTeam
+      summary: The account owner and team members
+      description: |
+        Team members (sub-accounts) sign in with their own email, password and two-factor authentication (required) and
+        act on this account within their role. `admin`: everything except acting on the owner; manages the team.
+        `developer`: invoices, checkout, webhooks, API keys, test tools and exports; no wallets, billing, plan or team.
+        `viewer`: read-only, plus their own security settings and exports. Writes outside a role answer `403 role_insufficient`.
+      security: [{ SessionAuth: [] }]
+      responses:
+        '200':
+          description: Team
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  object: { type: string, const: team }
+                  owner: { type: object, properties: { email: { type: string }, role: { type: string, const: owner } } }
+                  members: { type: array, items: { $ref: '#/components/schemas/TeamMember' } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /team/members:
+    post:
+      tags: [Account & Auth]
+      operationId: inviteTeamMember
+      summary: Invite a team member
+      description: |
+        Owner and admins only, with a fresh second factor. The invitee gets an email with a single-use link (72 h) to choose
+        a password, then enrols 2FA on first sign-in. The link is also returned (`set_password_url`) in case that inbox gets
+        no mail. Emails are unique across all CoinVello accounts and team members.
+      security: [{ SessionAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, role]
+              properties:
+                email: { type: string, format: email }
+                role: { type: string, enum: [admin, developer, viewer] }
+      responses:
+        '201':
+          description: Invited
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/TeamMember'
+                  - type: object
+                    properties:
+                      set_password_url: { type: string, format: uri }
+                      expires_in: { type: integer }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/InvalidState' }
+  /team/members/{id}:
+    patch:
+      tags: [Account & Auth]
+      operationId: updateTeamMember
+      summary: Change a member's role or disable it
+      description: Owner and admins only, with a fresh second factor; not on yourself. Ends the member's sessions so the change applies at once.
+      security: [{ SessionAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, pattern: '^mbr_[A-Za-z0-9]+$' } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                role: { type: string, enum: [admin, developer, viewer] }
+                status: { type: string, enum: [active, disabled] }
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TeamMember' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [Account & Auth]
+      operationId: removeTeamMember
+      summary: Remove a team member
+      description: Owner and admins only, with a fresh second factor; not yourself. Signs the member out everywhere at once. Its entries in the activity log stay.
+      security: [{ SessionAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, pattern: '^mbr_[A-Za-z0-9]+$' } }
+      responses:
+        '200':
+          description: Removed
+          content:
+            application/json:
+              schema: { type: object, properties: { id: { type: string }, object: { type: string, const: team_member }, deleted: { type: boolean } } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /team/members/{id}/resend:
+    post:
+      tags: [Account & Auth]
+      operationId: resendTeamInvite
+      summary: Send a new invite link
+      description: For a member that has not set a password yet; older links stop working.
+      security: [{ SessionAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, pattern: '^mbr_[A-Za-z0-9]+$' } }
+      responses:
+        '200':
+          description: Sent
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/TeamMember'
+                  - type: object
+                    properties:
+                      set_password_url: { type: string, format: uri }
+                      expires_in: { type: integer }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/InvalidState' }
+  /account/activity:
+    get:
+      tags: [Account & Auth]
+      operationId: listAccountActivity
+      summary: Activity log
+      description: |
+        Owner and admins. Sign-ins (including failed ones), sign-outs, password and 2FA changes, team changes, every change
+        made from the dashboard, and API-key changes to keys, wallets, webhooks and account settings. Append-only: there is
+        no way to edit or delete an entry, through the API or otherwise. Newest first.
+      security: [{ SessionAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+        - { name: actor_id, in: query, schema: { type: string } }
+        - { name: action, in: query, description: 'Prefix, e.g. login.', schema: { type: string } }
+        - { name: outcome, in: query, schema: { type: string, enum: [success, failure] } }
+      responses:
+        '200':
+          description: Activity
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  object: { type: string, const: list }
+                  data: { type: array, items: { $ref: '#/components/schemas/Activity' } }
+                  has_more: { type: boolean }
+                  next_cursor: { type: [string, 'null'] }
+        '403': { $ref: '#/components/responses/Forbidden' }
   /auth/email/verify:
     post:
       tags: [Account & Auth]
@@ -4378,6 +4530,54 @@ paths:
                       wallets: { type: integer }
                       receivers: { type: integer }
                       sweeps: { type: integer }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /admin/merchants/{id}/activity:
+    get:
+      tags: [Admin]
+      operationId: adminListMerchantActivity
+      summary: A merchant's activity log
+      security: [{ AdminAuth: [] }, { AdminSession: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+        - { name: actor_id, in: query, schema: { type: string } }
+        - { name: action, in: query, schema: { type: string } }
+        - { name: outcome, in: query, schema: { type: string, enum: [success, failure] } }
+      responses:
+        '200':
+          description: Activity
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  object: { type: string, const: list }
+                  data: { type: array, items: { $ref: '#/components/schemas/Activity' } }
+                  has_more: { type: boolean }
+                  next_cursor: { type: [string, 'null'] }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /admin/merchants/{id}/team:
+    get:
+      tags: [Admin]
+      operationId: adminGetMerchantTeam
+      summary: A merchant's team
+      security: [{ AdminAuth: [] }, { AdminSession: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: Team
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  object: { type: string, const: team }
+                  owner: { type: object, properties: { email: { type: string }, role: { type: string } } }
+                  members: { type: array, items: { $ref: '#/components/schemas/TeamMember' } }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
   /admin/invoices/{id}:
@@ -7274,6 +7474,39 @@ components:
         csrf_token:
           type: string
           description: Send as `X-CSRF-Token` on every mutating request made with the session cookie.
+    TeamMember:
+      type: object
+      properties:
+        id: { type: string, examples: [mbr_7Hq2kLp9Xc] }
+        object: { type: string, const: team_member }
+        email: { type: string }
+        role: { type: string, enum: [admin, developer, viewer] }
+        status: { type: string, enum: [invited, active, disabled] }
+        email_verified: { type: boolean }
+        invited_by: { type: [string, 'null'] }
+        last_login_at: { type: [string, 'null'], format: date-time }
+        created_at: { type: string, format: date-time }
+    Activity:
+      type: object
+      properties:
+        id: { type: string, examples: [act_9Gm2Qx7Lp] }
+        object: { type: string, const: activity }
+        at: { type: string, format: date-time }
+        actor:
+          type: object
+          properties:
+            type: { type: string, enum: [owner, member, api_key, system, staff] }
+            id: { type: [string, 'null'] }
+            email: { type: [string, 'null'] }
+        action: { type: string, examples: [login.succeeded, 'POST /webhooks'] }
+        method: { type: [string, 'null'] }
+        route: { type: [string, 'null'] }
+        target_id: { type: [string, 'null'] }
+        status_code: { type: [integer, 'null'] }
+        outcome: { type: string, enum: [success, failure] }
+        ip: { type: [string, 'null'] }
+        user_agent: { type: [string, 'null'] }
+        details: { type: object, additionalProperties: true }
     EmailVerification:
       type: object
       properties:
@@ -7290,6 +7523,14 @@ components:
         object: { type: string, const: account }
         email: { type: string, format: email }
         business_name: { type: [string, 'null'] }
+        you:
+          type: [object, 'null']
+          description: The signed-in person (dashboard sessions); null for API keys.
+          properties:
+            role: { type: string, enum: [owner, admin, developer, viewer] }
+            email: { type: [string, 'null'] }
+            member_id: { type: [string, 'null'] }
+            two_factor: { type: boolean }
         email_verified: { type: boolean, description: 'True once the merchant opened the confirmation link (or set a password from an emailed link). Live-mode writes and live API keys need it (`403 email_unverified`).' }
         status: { type: string, enum: [active, suspended, closed] }
         mfa_required: { type: boolean, description: Whether 2FA is enforced for this account. }
