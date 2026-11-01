@@ -5375,7 +5375,7 @@ components:
               message: "amount is required."
               param: amount
               request_id: req_8sD9fK2lMn
-              doc_url: "https://docs.coinvello.com/api/errors#parameter_missing"
+              doc_url: "https://github.com/CoinVello/coinvello-ai/blob/main/api/docs/errors.md"
     Unauthorized:
       description: Missing or invalid API key
       content:

@@ -16,7 +16,7 @@ CoinVello (https://coinvello.com) is a **non-custodial crypto payment processor*
 - **No KYC, no KYB.** Signup is an email address and an API key. The API collects no identity data
   about merchants or payers. The only verification that can ever happen is on a third-party partner's
   side if the merchant chooses to connect an off-ramp account (optional).
-- **Fees are prepaid processing credits, bought in crypto.** No percentage cut, no per-transaction
+- **Fees are prepaid processing credits, bought in crypto or by card.** No percentage cut, no per-transaction
   cents. 1 credit = $0.01 nominal. Each confirmed payment consumes roughly 30 bps of its fiat value
   (floor 2 credits, cap 2,000 credits). Bundles get cheaper per credit with volume, giving an
   effective rate of ~0.30% (Starter) down to under 0.10% (Enterprise). There are no free live
@@ -35,7 +35,7 @@ CoinVello (https://coinvello.com) is a **non-custodial crypto payment processor*
   solana, and every Bitcoin token (`wbtc:*`, `cbbtc:*`, `btcb:*`).
 - **Integration surfaces**: hosted checkout (pay.coinvello.com), embeddable widget
   (`@coinvello/checkout`), REST API with SDKs (`@coinvello/sdk` on npm, `coinvello` on PyPI; `coinvello/sdk` on
-  Packagist), plugins (WooCommerce available now; Shopify pending Shopify's approval; Magento 2, PrestaShop, OpenCart in testing),
+  Packagist), plugins (WooCommerce, Magento 2, PrestaShop and OpenCart available as downloads; Shopify pending Shopify's approval),
   MCP server (`npx -y @coinvello/mcp`, or hosted at https://mcp.coinvello.com/mcp with your key in
   `Authorization: Bearer cv_test_...`; the hosted server stores nothing and accepts test keys only).
 
@@ -252,7 +252,7 @@ Every delivery:
 ```
 POST /webhooks/coinvello
 Content-Type: application/json
-User-Agent: CoinVello-Webhooks/1.0 (+https://coinvello.com/webhooks)
+User-Agent: CoinVello-Webhooks/1.0 (+https://coinvello.com/developers)
 CoinVello-Signature: t=1760000000,v1=5257a869e7ecebeda32affa62cdca3fa51cad7e77a0e56ff536d0ce8e108d8bd
 CoinVello-Event-Id: evt_1Nz7Qw3Er9
 CoinVello-Event-Type: invoice.paid
@@ -553,7 +553,7 @@ Example:
 
 ```json
 { "error": { "type": "invalid_request_error", "code": "parameter_invalid", "message": "amount must be a decimal string",
-             "param": "amount", "request_id": "req_7Hq2kLm9", "doc_url": "https://coinvello.com/docs/errors#parameter_invalid" } }
+             "param": "amount", "request_id": "req_7Hq2kLm9", "doc_url": "https://github.com/CoinVello/coinvello-ai/blob/main/api/docs/errors.md" } }
 ```
 
 Retry policy: retry connection errors, `409 idempotency_key_in_progress`, `429` and `5xx` with
@@ -762,28 +762,39 @@ http_response_code(200);
 ```
 
 With the SDK (`composer require coinvello/sdk`): `$cv = new \CoinVello\Sdk\Client($key);`
-`$cv->checkoutSessions->create([...], ['idempotency_key' => ...]);` `\CoinVello\Sdk\Webhooks::constructEvent($raw, $header, $secret)`.
+`$cv->checkoutSessions()->create([...], ['idempotency_key' => ...]);` `\CoinVello\Sdk\Webhooks::constructEvent($raw, $header, $secret)`.
 
 ## 7. Embedded checkout and plugins (when not to write API code)
 
 - **Embeddable widget** `@coinvello/checkout`: your server creates the session; the browser calls
-  `CoinVelloCheckout.redirect(sessionId)`, `.open(sessionId)` (modal) or `.mount(el, sessionId)`
-  (inline), or uses `<coinvello-pay-button session="cs_...">`. The widget only needs the session id;
-  it talks to the public endpoints and never sees your API key.
-- **Plugins**: WooCommerce is available now (https://coinvello.com/integrations/woocommerce, zip download
-  with SHA-256); Shopify is pending Shopify Payments approval; Magento 2, PrestaShop and OpenCart are in
-  testing and not yet available. If the merchant runs WooCommerce, install the plugin and paste the API
-  key; do not write custom code. For the others, use the API or SDKs until the plugin ships.
+  `CoinVello.redirectToCheckout({ sessionId })` or `CoinVello.mount('#el', { sessionId, onPaid })`
+  (inline), or uses `<coinvello-pay-button session-id="cs_..." mode="modal">`. Install with
+  `npm install @coinvello/checkout` or the script tag `https://pay.coinvello.com/sdk/v1/checkout.js`.
+  The widget only needs the session id (there are no publishable keys); it talks to the public
+  endpoints, never sees your API key, and refuses one if it is passed in.
+- **Plugins**: WooCommerce, Magento 2, PrestaShop and OpenCart are available now as downloads from
+  https://coinvello.com/integrations/<platform> (`woocommerce`, `magento`, `prestashop`, `opencart`; zip with
+  SHA-256; the WooCommerce plugin is submitted to WordPress.org but not listed yet). Shopify is pending
+  Shopify's app review. If the merchant runs one of the available platforms, install the plugin and
+  paste the API key; do not write custom code. On Shopify, use the API or SDKs until the app is approved.
 
 ## 8. Go-live checklist
 
-1. Live wallets registered with a `cv_live_` key (verification optional; for xpubs, `first_address`
+1. Account email confirmed: live API keys and live-mode writes need it (`email_verified` on the
+   account; otherwise `403 email_unverified`).
+2. Live wallets registered with a `cv_live_` key (verification optional; for xpubs, `first_address`
    matches the wallet's first receive address).
-2. Credits bought (`GET /credits/bundles`, `POST /credits/purchases`, pay the option).
-3. Live webhook endpoint over HTTPS created; secret stored; handler verifies signature, dedupes on
+3. Credits bought (`GET /credits/bundles`, `POST /credits/purchases`, pay in crypto or with a saved
+   card), or `billing_plan: "pay_as_you_go"` set (section 3b; Bitcoin still uses credits).
+4. Live webhook endpoint over HTTPS created; secret stored; handler verifies signature, dedupes on
    `event.id`, responds 2xx in < 10 s, and fulfils only on `invoice.paid`.
-4. `Idempotency-Key` set on every POST; amounts are strings; API key only on the server.
-5. Swap `cv_test_` for `cv_live_`. There is no account review step.
+5. `Idempotency-Key` set on every POST; amounts are strings; API key only on the server.
+6. Swap `cv_test_` for `cv_live_`. There is no account review step.
+7. Optional, team accounts: invite colleagues from the dashboard (`POST /team/members` with `email` and
+   `role`: `admin`, `developer` or `viewer`; the account creator is `owner`). Members sign in with their own
+   password and must enrol 2FA. `developer` covers invoices, checkout, webhooks, API keys, test tools and
+   exports, not wallets, billing, plan or team; `viewer` is read-only. Owner and admins read the
+   append-only activity log with `GET /account/activity`.
 
 ## 9. Links
 

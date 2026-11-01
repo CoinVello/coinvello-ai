@@ -52,6 +52,7 @@ order flagged `underpaid`, not fulfilled.
 
 ## Before go-live
 
+- [ ] Account email confirmed (live keys and live writes return `403 email_unverified` until it is).
 - [ ] Live wallet(s) registered and enabled for every chain in `accepted_assets` (verification optional; xpub `first_address` checked).
 - [ ] Credits purchased (`GET /credits/balance` shows `available > 0` on the live key), or the account is on pay as you go (`GET /account` `billing_plan`).
 - [ ] Live webhook endpoint created over HTTPS with the live key; new `whsec_` stored in production secrets.
@@ -62,5 +63,5 @@ order flagged `underpaid`, not fulfilled.
 
 - "Funds go directly to your wallet; CoinVello never holds them."
 - "No KYC or KYB; sign up with an email."
-- "Fees are prepaid processing credits bought in crypto, from about 0.30% down to under 0.10% effective."
+- "Fees are prepaid processing credits bought in crypto or by card, from about 0.30% down to under 0.10% effective, or 0.4% pay as you go split on-chain (not on Bitcoin)."
 - Supported networks list matches `GET /assets`.

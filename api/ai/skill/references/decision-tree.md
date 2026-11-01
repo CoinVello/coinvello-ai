@@ -4,7 +4,8 @@ Walk the questions in order; stop at the first match.
 
 ```
 Is the store on WooCommerce, Shopify, Magento 2, PrestaShop or OpenCart?
-├─ yes ─> PLUGIN. Install plugins/<platform>, paste API key, configure the webhook URL the plugin shows.
+├─ yes ─> PLUGIN. Download from https://coinvello.com/integrations/<platform> (Shopify: pending approval,
+│         use the API meanwhile), paste API key, configure the webhook URL the plugin shows.
 │         Do not write custom payment code. Custom work = theming or order-status mapping only.
 └─ no
    Does the project have a server (Node, Python, PHP, Ruby, Go, Java, .NET...)?
@@ -19,8 +20,10 @@ Is the store on WooCommerce, Shopify, Magento 2, PrestaShop or OpenCart?
       └─ yes
          Must the payment UI live inside the merchant's own page (modal / inline, no redirect)?
          ├─ yes ─> EMBEDDED WIDGET. Server creates the checkout session (POST /checkout-sessions);
-         │         browser loads @coinvello/checkout and calls .open(sessionId) (modal) or
-         │         .mount(el, sessionId) (inline) or renders <coinvello-pay-button session="cs_...">.
+         │         browser loads @coinvello/checkout (npm, or pay.coinvello.com/sdk/v1/checkout.js) and
+         │         calls CoinVello.mount('#el', { sessionId, onPaid }) (inline) or
+         │         CoinVello.redirectToCheckout({ sessionId }), or renders
+         │         <coinvello-pay-button session-id="cs_..." mode="modal">. Only the session id is needed.
          │         Webhook handling identical to hosted checkout. The widget never sees the API key.
          └─ no ─> HOSTED CHECKOUT (default). POST /checkout-sessions -> 303 redirect to session.url
                    (pay.coinvello.com/c/cs_...). Customer picks asset, pays via QR / MetaMask /

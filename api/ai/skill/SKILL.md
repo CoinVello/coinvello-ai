@@ -14,7 +14,8 @@ CoinVello (`https://api.coinvello.com/v1`) lets a merchant accept crypto straigh
 control. CoinVello derives a fresh address per invoice from the merchant's xpub (BTC) or watches
 a merchant-owned address (Ethereum, Base, Arbitrum, Optimism, Polygon, BNB Chain, Avalanche, Robinhood
 Chain, Solana, Tron), detects the payment, confirms it and fires a signed webhook. It never holds funds, needs no
-KYC/KYB, and charges prepaid processing credits (bought in crypto) instead of a percentage.
+KYC/KYB, and charges prepaid processing credits (bought in crypto or by card) instead of a percentage, or 0.4% pay as you go
+split on-chain for merchants who do not want to prepay.
 
 Read `references/api-cheatsheet.md` before writing code. For the whole contract in one file read
 `../llms-full.txt` (also served at https://coinvello.com/llms-full.txt and as the MCP resource
@@ -26,7 +27,7 @@ Follow `references/decision-tree.md`. Summary:
 
 | Situation | Path | Code to write |
 |-----------|------|---------------|
-| WooCommerce / Shopify / Magento 2 / PrestaShop / OpenCart store | **Plugin** (`plugins/<platform>`) | None. Install, paste API key, configure webhook. |
+| WooCommerce / Shopify / Magento 2 / PrestaShop / OpenCart store | **Plugin** (download from https://coinvello.com/integrations; Shopify pending approval) | None. Install, paste API key, configure webhook. |
 | Any web app with a server; wants the least UI work | **Hosted checkout** (`POST /checkout-sessions` -> redirect) | 1 route + 1 webhook handler |
 | Wants the payment UI inside their own page / modal | **Embedded widget** (`@coinvello/checkout`) + checkout session | 1 route + 1 webhook + a few lines of JS |
 | Custom UI, kiosk, mobile, invoices by email, or crypto-priced amounts | **Direct API** (`POST /invoices`, render `payment_options`) | 1 route + 1 webhook + QR rendering |
@@ -108,7 +109,8 @@ tampered body or stale timestamp is rejected with 400.
 
 ## Step 6: go live
 
-Live wallet verified -> credits bought -> HTTPS webhook created with a live key -> swap
+Account email confirmed (live keys need it, `403 email_unverified` otherwise) -> live wallet registered ->
+credits bought (crypto or card) or pay as you go chosen -> HTTPS webhook created with a live key -> swap
 `cv_test_` for `cv_live_`. There is no review step.
 
 ## Records (bookkeeping and tax)
@@ -129,7 +131,7 @@ currency, fiscal year start and timezone. With a test key, simulated payments sh
 
 - Non-custodial: funds never pass through CoinVello; there is no payout/withdrawal step.
 - No KYC / KYB for merchants; no payer identity collected.
-- Fees: prepaid credits bought in crypto; ~30 bps nominal with floor/cap, effective 0.30% down to <0.10%; `GET /credits/bundles` is authoritative. No free live credits; the balance never goes below zero (each open invoice reserves its estimated fee). Merchants who do not want to prepay use pay as you go (0.4% split on-chain, open to every account); a prepaid account switches to it automatically when credits run out unless `auto_switch_to_pay_as_you_go` is false.
+- Fees: prepaid credits bought in crypto or by card; ~30 bps nominal with floor/cap, effective 0.30% down to <0.10%; `GET /credits/bundles` is authoritative. No free live credits; the balance never goes below zero (each open invoice reserves its estimated fee). Merchants who do not want to prepay use pay as you go (0.4% split on-chain, open to every account); a prepaid account switches to it automatically when credits run out unless `auto_switch_to_pay_as_you_go` is false.
 - Contracts: prepaid credits involve no contract. Pay-as-you-go receivers (EVM/Tron contracts, Solana vault PDAs) have no owner, admin, pause, upgrade or setter; payout, fee recipients and fee are immutable; anyone can sweep. Not yet externally audited. Addresses and how to check them: section 3c of `../llms-full.txt`.
 - 11 networks; USDC/USDT/DAI/EURC/PYUSD/USDG where available, plus Bitcoin tokens WBTC/cbBTC/BTCB/BTC.b (some tokens, including all Bitcoin tokens, are live-only: `GET /assets` with a test key shows what test mode accepts); amounts are strings; asset ids are `<asset>:<chain>`.
 - Signature: `t=<unix>,v1=<hex>` over `"<t>.<raw body>"` with HMAC-SHA256 and the `whsec_` secret; 300 s tolerance; any `v1` may match (rotation).

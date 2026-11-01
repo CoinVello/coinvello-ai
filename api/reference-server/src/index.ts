@@ -109,7 +109,7 @@ async function deliver(w: Webhook, evt: Event, attempt: number, replayed = false
       method: "POST", signal: ctrl.signal, body,
       headers: {
         "Content-Type": "application/json",
-        "User-Agent": "CoinVello-Webhooks/1.0 (+https://coinvello.com/webhooks) reference-server",
+        "User-Agent": "CoinVello-Webhooks/1.0 (+https://coinvello.com/developers) reference-server",
         "CoinVello-Signature": signPayload(body, w.secret),
         "CoinVello-Event-Id": evt.id, "CoinVello-Event-Type": evt.type, "CoinVello-Webhook-Id": w.id,
         "CoinVello-Delivery-Id": d.id, "CoinVello-Delivery-Attempt": String(attempt),

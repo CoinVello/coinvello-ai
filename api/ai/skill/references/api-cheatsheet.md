@@ -37,7 +37,7 @@ Mock: `http://localhost:4242/v1` (api/reference-server; any `cv_test_` key; no w
 | `POST /webhooks/{id}/test`, `/rotate_secret`, `GET .../deliveries`, `POST .../deliveries/{id}/retry` | Testing, rotation, delivery log | |
 | `GET /credits/balance` | `balance` (= `available` + `reserved`, never negative), `available`, `reserved`, `low_balance_threshold`, `estimated_payments_remaining`, `auto_topup{}` | |
 | `GET /credits/bundles` | `id`, `name`, `credits`, `bonus_credits`, `price{amount,currency}`, `price_per_credit`, `crypto_prices[]` | |
-| `POST /credits/purchases`, `GET /credits/purchases[/{id}]`, `POST .../cancel` | Buy credits in crypto | req: `bundle_id`, `pay_asset` (symbol, e.g. `usdt`), `pay_chain` -> `id cpu_`, `status`, `credits`, `payment.payment_options[]`, `checkout_url` |
+| `POST /credits/purchases`, `GET /credits/purchases[/{id}]`, `POST .../cancel` | Buy credits in crypto, or by card | req: `bundle_id` + `pay_asset` (symbol, e.g. `usdt`), `pay_chain`, or `bundle_id` + `payment_method` (`pm_`, card saved in the dashboard) -> `id cpu_`, `status`, `credits`, `payment.payment_options[]`, `checkout_url` |
 | `GET /credits/ledger`, `PUT /credits/auto_topup` | History, auto top-up | |
 | `GET /rates?base=USD&assets=` | Indicative rates | |
 | `POST /rates/quotes`, `POST /rates/locks`, `GET /rates/locks/{id}` | Binding quotes (attach `rate_lock_id` to invoice) | |
@@ -91,6 +91,6 @@ Types: `invoice.created|pending|confirming|paid|underpaid|overpaid|expired|cance
 Prepaid processing credits, 1 credit = $0.01 nominal, a confirmed payment consumes ~30 bps of its fiat
 value (floor 2, cap 2,000 credits). Bundles (indicative): Starter 2,500/$25 (0.30%),
 Growth 15,000/$120 (0.24%), Scale 75,000/$450 (0.18%), Volume 400,000/$1,600 (0.12%), Enterprise
-2M+/from $6,000 (<=0.09%). Credits last 24 months. Bought in crypto via `POST /credits/purchases`.
+2M+/from $6,000 (<=0.09%). Credits last 24 months. Bought in crypto or by card via `POST /credits/purchases`.
 No free live credits; the balance never goes below zero (open invoices reserve their estimated fee).
-Without credits: pay as you go (0.4% on-chain); auto switch to it is on by default.
+Without credits: pay as you go (0.4% split on-chain, open to every account, not on Bitcoin); auto switch to it is on by default.
