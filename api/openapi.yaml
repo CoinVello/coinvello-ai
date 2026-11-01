@@ -3174,6 +3174,45 @@ paths:
       responses:
         '204': { description: Session revoked }
 
+  /auth/email/verify:
+    post:
+      tags: [Account & Auth]
+      operationId: authEmailVerify
+      summary: Confirm an email address
+      description: Consumes the single-use token from the confirmation email (72 h) and marks the merchant's address verified. Rate limited per IP.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token]
+              properties:
+                token: { type: string, pattern: '^evf_[A-Za-z0-9_-]{20,100}$' }
+      responses:
+        '200':
+          description: Verified
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EmailVerification' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /auth/email/resend:
+    post:
+      tags: [Account & Auth]
+      operationId: authEmailResend
+      summary: Send a new confirmation email
+      description: For the signed-in merchant whose address is not verified yet; supersedes older links. At most 5 per hour.
+      security: [{ SessionAuth: [] }]
+      responses:
+        '200':
+          description: Sent (or already verified)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EmailVerification' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '429': { $ref: '#/components/responses/RateLimited' }
   /auth/password/forgot:
     post:
       tags: [Account & Auth]
@@ -4031,6 +4070,14 @@ paths:
           in: query
           description: Free-text search over id, email, business name.
           schema: { type: string }
+        - name: has_paid
+          in: query
+          description: 'Only merchants with at least one paid or overpaid payment invoice in the chosen mode.'
+          schema: { type: string, enum: ['true', 'false'] }
+        - name: livemode
+          in: query
+          description: 'Mode for `has_paid` (default from the CoinVello-Livemode header, else live).'
+          schema: { type: string, enum: ['true', 'false'] }
       responses:
         '200':
           description: Merchants
@@ -4265,6 +4312,153 @@ paths:
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/InvalidState' }
 
+  /admin/merchants/create:
+    post:
+      tags: [Admin]
+      operationId: adminCreateMerchant
+      summary: Create a merchant account (team or hand onboarding)
+      description: |
+        Creates a merchant account without a usable password and returns a single-use link (72 h) for the invitee to
+        choose one; the link is also emailed to them. This is the only way to create accounts on the reserved
+        coinvello.com domain, which public signup refuses (`email_reserved`).
+      security: [{ AdminAuth: [] }, { AdminSession: [] }]
+      parameters:
+        - $ref: '#/components/parameters/AdminReason'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email: { type: string, format: email }
+                business_name: { type: string, maxLength: 120 }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  object: { type: string, const: merchant_invite }
+                  merchant: { $ref: '#/components/schemas/AdminMerchant' }
+                  set_password_url: { type: string, format: uri }
+                  expires_in: { type: integer }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/InvalidState' }
+  /admin/merchants/delete:
+    post:
+      tags: [Admin]
+      operationId: adminDeleteMerchants
+      summary: Delete merchant accounts in bulk
+      description: |
+        Accounts with only test-mode activity are erased with all their data. Accounts with any live-mode invoice,
+        payment, credit purchase, ledger entry, sweep or record are closed instead (API keys revoked, webhooks
+        disabled, sessions ended) and their data kept for the books. Each account is written to the audit log.
+      security: [{ AdminAuth: [] }, { AdminSession: [] }]
+      parameters:
+        - $ref: '#/components/parameters/AdminReason'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [merchant_ids]
+              properties:
+                merchant_ids: { type: array, minItems: 1, maxItems: 200, items: { type: string, pattern: '^mer_[A-Za-z0-9]+$' } }
+      responses:
+        '200':
+          description: Outcome per merchant
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  object: { type: string, const: merchant_deletion }
+                  results:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: string }
+                        result: { type: string, enum: [deleted, closed, not_found] }
+                  deleted: { type: integer }
+                  closed: { type: integer }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /admin/merchants/{id}/invoices:
+    get:
+      tags: [Admin]
+      operationId: adminListMerchantInvoices
+      summary: A merchant's invoices
+      description: The merchant's payment invoices, newest first (same objects as `GET /invoices`; each carries `livemode`).
+      security: [{ AdminAuth: [] }, { AdminSession: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+        - { name: status, in: query, schema: { type: string } }
+        - { name: paid, in: query, description: 'Only paid and overpaid invoices (overrides `status`).', schema: { type: string, enum: ['true', 'false'] } }
+        - { name: livemode, in: query, description: '`any` for both modes; default from the CoinVello-Livemode header, else live.', schema: { type: string, enum: ['true', 'false', 'any'] } }
+      responses:
+        '200':
+          description: Invoices
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  object: { type: string, const: list }
+                  data: { type: array, items: { $ref: '#/components/schemas/Invoice' } }
+                  has_more: { type: boolean }
+                  next_cursor: { type: [string, 'null'] }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /admin/payg-fees:
+    get:
+      tags: [Admin]
+      operationId: adminPaygFeeSummary
+      summary: Pay-as-you-go fee revenue
+      description: |
+        Operator view of pay-as-you-go revenue across all merchants. `collected_usd` is the fee share of confirmed,
+        non-simulated sweeps confirmed since `since`, valued when swept (fees whose destination was `forfeited` are
+        reported separately). `accrued_unswept_usd` is the fee owed by paid pay-as-you-go invoices that no sweep has
+        collected yet, at any age. `network_fees_usd` is the gas CoinVello paid for the sweeps it initiated.
+      security: [{ AdminAuth: [] }, { AdminSession: [] }]
+      parameters:
+        - { name: since, in: query, description: 'Start of the window (default 30 days ago).', schema: { type: string, format: date-time } }
+        - { name: livemode, in: query, description: 'Mode to report on (default from the CoinVello-Livemode header, else live).', schema: { type: string, enum: ['true', 'false'] } }
+      responses:
+        '200':
+          description: Summary
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  object: { type: string, const: payg_fee_summary }
+                  livemode: { type: boolean }
+                  since: { type: string, format: date-time }
+                  collected_usd: { type: string, examples: ['1.53'] }
+                  sweeps: { type: integer }
+                  network_fees_usd: { type: string, examples: ['0.04'] }
+                  forfeited_usd: { type: string, examples: ['0.00'] }
+                  accrued_unswept_usd: { type: string, examples: ['0.00'] }
+                  invoices_awaiting_sweep: { type: integer }
+                  by_chain:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        chain: { $ref: '#/components/schemas/Chain' }
+                        collected_usd: { type: string }
+                        sweeps: { type: integer }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
   /admin/watchers:
     get:
       tags: [Admin]
@@ -6988,6 +7182,13 @@ components:
         csrf_token:
           type: string
           description: Send as `X-CSRF-Token` on every mutating request made with the session cookie.
+    EmailVerification:
+      type: object
+      properties:
+        object: { type: string, const: email_verification }
+        email: { type: [string, 'null'] }
+        verified: { type: boolean }
+        sent: { type: boolean }
     Account:
       type: object
       description: The merchant account behind a dashboard session. Email and a display name only; there is no identity data.
@@ -6997,6 +7198,7 @@ components:
         object: { type: string, const: account }
         email: { type: string, format: email }
         business_name: { type: [string, 'null'] }
+        email_verified: { type: boolean, description: 'True once the merchant opened the confirmation link (or set a password from an emailed link). Live-mode writes and live API keys need it (`403 email_unverified`).' }
         status: { type: string, enum: [active, suspended, closed] }
         mfa_required: { type: boolean, description: Whether 2FA is enforced for this account. }
         locale: { type: [string, 'null'], description: "Default checkout language hint (BCP-47), or null." }

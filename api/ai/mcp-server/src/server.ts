@@ -15,13 +15,15 @@ import { CoinVelloApiError, CoinVelloClient } from "./client.js";
 import { verifyCoinVelloSignature } from "./verify.js";
 
 export const SERVER_NAME = "coinvello";
-export const SERVER_VERSION = "0.1.3";
+export const SERVER_VERSION = "0.1.4";
 
 export interface ServerConfig {
   apiKey?: string;
   baseUrl?: string;
   allowLive?: boolean;
   apiVersion?: string;
+  /** Hosted (multi-user) mode: the key comes with each request, so errors explain how to send it. */
+  hosted?: boolean;
 }
 
 export function configFromEnv(env: NodeJS.ProcessEnv = process.env): ServerConfig {
@@ -35,6 +37,9 @@ export function configFromEnv(env: NodeJS.ProcessEnv = process.env): ServerConfi
 
 /** Throws a clear error when the key is missing or is a live key without the explicit opt-in. */
 export function assertKeyAllowed(cfg: ServerConfig): void {
+  if (!cfg.apiKey && cfg.hosted) {
+    throw new Error("No CoinVello API key on this request. Send it as `Authorization: Bearer cv_test_...` (or the `api_key` setting of this server in your MCP client). Create a test key at https://coinvello.com/app/settings.php (Settings -> API keys).");
+  }
   if (!cfg.apiKey) {
     throw new Error(
       "COINVELLO_API_KEY is not set. Create a test key (cv_test_...) at https://coinvello.com/app/settings.php (Settings -> API keys), " +

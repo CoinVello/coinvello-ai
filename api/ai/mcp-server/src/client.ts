@@ -64,7 +64,7 @@ export class CoinVelloClient {
     const headers: Record<string, string> = {
       Authorization: `Bearer ${this.apiKey}`,
       Accept: "application/json",
-      "User-Agent": "coinvello-mcp/0.1.3",
+      "User-Agent": "coinvello-mcp/0.1.4",
     };
     if (body !== undefined) headers["Content-Type"] = "application/json";
     if (idempotencyKey) headers["Idempotency-Key"] = idempotencyKey;

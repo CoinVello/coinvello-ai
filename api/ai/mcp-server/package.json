@@ -1,6 +1,6 @@
 {
   "name": "@coinvello/mcp",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "mcpName": "io.github.CoinVello/coinvello",
   "description": "Model Context Protocol server for the CoinVello API: non-custodial crypto payments (checkout sessions, invoices, webhooks, credits) for Claude, Cursor, Windsurf, ChatGPT and other MCP clients.",
   "license": "MIT",

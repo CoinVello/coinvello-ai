@@ -17,6 +17,17 @@ npx -y @coinvello/mcp --http 3333  # Streamable HTTP on http://127.0.0.1:3333/mc
 npm install && npm run build && node dist/index.js
 ```
 
+### Hosted (nothing to install)
+
+`https://mcp.coinvello.com/mcp` runs this server for you over Streamable HTTP. Send your own key with every request
+as `Authorization: Bearer cv_test_...` (or `X-CoinVello-Api-Key`, or an `api_key` setting in clients that only take
+query parameters). The hosted server stores nothing, accepts test keys only, and never logs keys. Run it yourself with
+`npx -y @coinvello/mcp --http --hosted`.
+
+```json
+{ "mcpServers": { "coinvello": { "url": "https://mcp.coinvello.com/mcp", "headers": { "Authorization": "Bearer cv_test_..." } } } }
+```
+
 ## Documentation
 
 | | |
