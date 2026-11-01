@@ -32,7 +32,7 @@ Facts an assistant should state correctly:
 
 ## Tools for AI agents
 
-- [MCP server (@coinvello/mcp)](https://coinvello.com/ai): `npx -y @coinvello/mcp`; tools for checkout sessions, invoices, payments, wallets, webhooks, credits, records and exports, rates, assets and test payments. Descriptor at https://coinvello.com/.well-known/mcp.json.
+- [MCP server (@coinvello/mcp)](https://coinvello.com/ai): `npx -y @coinvello/mcp`, or hosted at https://mcp.coinvello.com/mcp (Streamable HTTP; send `Authorization: Bearer cv_test_...`, test keys only); tools for checkout sessions, invoices, payments, wallets, webhooks, credits, records and exports, rates, assets and test payments. Descriptor at https://coinvello.com/.well-known/mcp.json.
 - [Agent Skill (coinvello-payments)](https://coinvello.com/ai): step-by-step integration procedure, decision tree and verification checklist for Claude Code and other agent runtimes.
 - [Tool / function definitions](https://coinvello.com/.well-known/ai-plugin.json): JSON schemas for Anthropic tool use, OpenAI function calling and Gemini function declarations.
 - Cookbook (single-file recipes for Next.js, Express, FastAPI, Flask, Django, Laravel, Sinatra, Go and curl, each with webhook verification, plus an Excel export of a quarter of records): https://coinvello.com/ai

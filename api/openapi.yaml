@@ -4312,6 +4312,97 @@ paths:
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/InvalidState' }
 
+  /admin/merchants/{id}/stats:
+    get:
+      tags: [Admin]
+      operationId: adminMerchantStats
+      summary: Lifetime figures for a merchant
+      description: Volume, invoices, fees, credit purchases and account facts, separately for live and test mode.
+      security: [{ AdminAuth: [] }, { AdminSession: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, pattern: '^mer_[A-Za-z0-9]+$' } }
+      responses:
+        '200':
+          description: Stats
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  object: { type: string, const: merchant_stats }
+                  merchant_id: { type: string }
+                  account: { type: object, properties: { plan: { type: string }, auto_switch_to_pay_as_you_go: { type: boolean }, email_verified: { type: boolean }, two_factor: { type: boolean } } }
+                  live:
+                    type: object
+                    properties:
+                      volume_usd: { type: string, description: 'USD value of paid and overpaid invoices, valued when paid.' }
+                      invoices_paid: { type: integer }
+                      invoices_total: { type: integer }
+                      invoices_expired: { type: integer }
+                      average_order_usd: { type: string }
+                      first_paid_at: { type: [string, 'null'], format: date-time }
+                      last_paid_at: { type: [string, 'null'], format: date-time }
+                      by_asset: { type: array, items: { type: object, properties: { asset: { type: string }, invoices: { type: integer }, volume_usd: { type: string } } } }
+                      fees:
+                        type: object
+                        properties:
+                          payg_swept_usd: { type: string }
+                          payg_unswept_usd: { type: string }
+                          credits_consumed: { type: integer }
+                          credits_consumed_nominal_usd: { type: string, description: 'Credits consumed at their nominal $0.01 each (what was actually paid per credit depends on the bundle).' }
+                          total_usd: { type: string }
+                      credit_purchases: { type: object, properties: { count: { type: integer }, credits: { type: integer }, paid_usd: { type: string } } }
+                      wallets: { type: integer }
+                      receivers: { type: integer }
+                      sweeps: { type: integer }
+                  test:
+                    type: object
+                    properties:
+                      volume_usd: { type: string, description: 'USD value of paid and overpaid invoices, valued when paid.' }
+                      invoices_paid: { type: integer }
+                      invoices_total: { type: integer }
+                      invoices_expired: { type: integer }
+                      average_order_usd: { type: string }
+                      first_paid_at: { type: [string, 'null'], format: date-time }
+                      last_paid_at: { type: [string, 'null'], format: date-time }
+                      by_asset: { type: array, items: { type: object, properties: { asset: { type: string }, invoices: { type: integer }, volume_usd: { type: string } } } }
+                      fees:
+                        type: object
+                        properties:
+                          payg_swept_usd: { type: string }
+                          payg_unswept_usd: { type: string }
+                          credits_consumed: { type: integer }
+                          credits_consumed_nominal_usd: { type: string, description: 'Credits consumed at their nominal $0.01 each (what was actually paid per credit depends on the bundle).' }
+                          total_usd: { type: string }
+                      credit_purchases: { type: object, properties: { count: { type: integer }, credits: { type: integer }, paid_usd: { type: string } } }
+                      wallets: { type: integer }
+                      receivers: { type: integer }
+                      sweeps: { type: integer }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /admin/invoices/{id}:
+    get:
+      tags: [Admin]
+      operationId: adminGetInvoice
+      summary: Any invoice, with its payments
+      description: An invoice of any merchant in either mode (same object as `GET /invoices/{id}`), plus `merchant_id` and its `payments`.
+      security: [{ AdminAuth: [] }, { AdminSession: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, pattern: '^inv_[A-Za-z0-9]+$' } }
+      responses:
+        '200':
+          description: Invoice
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Invoice'
+                  - type: object
+                    properties:
+                      merchant_id: { type: string }
+                      payments: { type: array, items: { $ref: '#/components/schemas/Payment' } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
   /admin/merchants/create:
     post:
       tags: [Admin]
@@ -4403,6 +4494,7 @@ paths:
         - $ref: '#/components/parameters/Cursor'
         - { name: status, in: query, schema: { type: string } }
         - { name: paid, in: query, description: 'Only paid and overpaid invoices (overrides `status`).', schema: { type: string, enum: ['true', 'false'] } }
+        - { name: query, in: query, description: 'Search: exact invoice id or payment tx hash, or part of the order id, description or customer email.', schema: { type: string, maxLength: 200 } }
         - { name: livemode, in: query, description: '`any` for both modes; default from the CoinVello-Livemode header, else live.', schema: { type: string, enum: ['true', 'false', 'any'] } }
       responses:
         '200':

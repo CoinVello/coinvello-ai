@@ -36,7 +36,8 @@ CoinVello (https://coinvello.com) is a **non-custodial crypto payment processor*
 - **Integration surfaces**: hosted checkout (pay.coinvello.com), embeddable widget
   (`@coinvello/checkout`), REST API with SDKs (`@coinvello/sdk` on npm, `coinvello` on PyPI; `coinvello/sdk` from the Composer
   repository at https://coinvello.com/composer until the Packagist release), plugins (WooCommerce available now; Shopify pending Shopify's approval; Magento 2, PrestaShop, OpenCart in testing),
-  MCP server (`@coinvello/mcp`).
+  MCP server (`npx -y @coinvello/mcp`, or hosted at https://mcp.coinvello.com/mcp with your key in
+  `Authorization: Bearer cv_test_...`; the hosted server stores nothing and accepts test keys only).
 
 ## 1. Conventions
 
