@@ -159,6 +159,17 @@ tags:
       Admin resources - operator wallets (where credit purchases are received), credit bundles,
       merchants, the global credit ledger, and credit purchases.
 
+  - name: Support
+    description: |
+      The **Support Desk**: tickets between CoinVello agents and merchants (or anyone who cannot sign in).
+      Not for integrations. Signed-in merchants and team members open and follow tickets from the dashboard
+      (`SessionAuth`); the ticket carries their email and any invoices they name. People who cannot sign in
+      open a ticket as a guest with an email address and a proof-of-work challenge (`GET /support/captcha`),
+      and follow it through a private link sent to that address (header `CoinVello-Ticket-Token`). Agents
+      are staff (`AdminAuth`); support desk admins add agents with `@coinvello.com` addresses.
+
+      Status: `open` (waiting on CoinVello) -> `waiting_on_customer` | `resolved`. A customer reply reopens
+      the ticket. Every reply from an agent is emailed to the requester.
 paths:
   # ---------------------------------------------------------------- Invoices
   /invoices:
@@ -4859,6 +4870,565 @@ paths:
                         items: { $ref: '#/components/schemas/AuditLogEntry' }
         '403': { $ref: '#/components/responses/Forbidden' }
 
+  # ---------------------------------------------------------------- Support Desk
+  /support/captcha:
+    get:
+      tags: [Support]
+      operationId: getSupportCaptcha
+      summary: Get a proof-of-work challenge
+      description: |
+        Self-hosted challenge for guest forms, valid 10 minutes and once. Find the integer `number` in
+        `[0, maxnumber]` for which `hex(SHA-256(salt + number))` equals `challenge`, then send
+        `{ algorithm, challenge, salt, signature, number }` as `captcha`. No cookies, no third party.
+      security: []
+      responses:
+        '200':
+          description: A challenge
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SupportCaptcha' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /support/guest/tickets:
+    post:
+      tags: [Support]
+      operationId: createGuestSupportTicket
+      summary: Open a ticket without signing in
+      description: |
+        For people who cannot sign in (lost password or 2FA, no account yet, a payer with a question). Needs a
+        solved `captcha`. The private link to the ticket is emailed to `email` and never returned here, so only
+        the owner of the address can read replies. When `email` belongs to a CoinVello account the ticket also
+        shows in that account's Support Desk. Limited to a few tickets per hour per address and per IP.
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, subject, body, captcha]
+              properties:
+                email: { type: string, format: email, maxLength: 254 }
+                subject: { type: string, minLength: 1, maxLength: 200 }
+                category: { $ref: '#/components/schemas/SupportTicketCategory' }
+                body: { type: string, minLength: 1, maxLength: 10000 }
+                invoice_ids: { $ref: '#/components/schemas/SupportInvoiceIds' }
+                captcha: { $ref: '#/components/schemas/SupportCaptchaSolution' }
+      responses:
+        '201':
+          description: Ticket opened; the link is on its way to the email address
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  object: { type: string, const: support_ticket_receipt }
+                  number: { type: integer, examples: [1042] }
+                  email: { type: string }
+                  status: { $ref: '#/components/schemas/SupportTicketStatus' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /support/guest/links:
+    post:
+      tags: [Support]
+      operationId: resendGuestSupportLinks
+      summary: Email the links to my tickets again
+      description: Sends the private links of the most recent tickets opened with this email. Same answer whether or not any exist.
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, captcha]
+              properties:
+                email: { type: string, format: email, maxLength: 254 }
+                captcha: { $ref: '#/components/schemas/SupportCaptchaSolution' }
+      responses:
+        '200':
+          description: Accepted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  object: { type: string, const: support_links_request }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /support/guest/ticket:
+    get:
+      tags: [Support]
+      operationId: getGuestSupportTicket
+      summary: Read a ticket from its private link
+      description: The first read also confirms the requester's email address (the link only ever went there).
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/SupportTicketToken'
+      responses:
+        '200':
+          description: The ticket and its conversation
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SupportTicket' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /support/guest/ticket/messages:
+    post:
+      tags: [Support]
+      operationId: replyGuestSupportTicket
+      summary: Reply to a ticket from its private link
+      description: Reopens a ticket that was waiting on the customer or resolved.
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/SupportTicketToken'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [body]
+              properties:
+                body: { type: string, minLength: 1, maxLength: 10000 }
+      responses:
+        '201':
+          description: The updated ticket
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SupportTicket' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /support/tickets:
+    get:
+      tags: [Support]
+      operationId: listSupportTickets
+      summary: List the account's tickets
+      description: |
+        Newest first, without messages. The owner and admins see every ticket of the account (including guest
+        tickets opened with the account's email or a member's email); developers and viewers see their own.
+      security: [{ SessionAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+        - name: status
+          in: query
+          schema: { $ref: '#/components/schemas/SupportTicketStatus' }
+      responses:
+        '200':
+          description: Tickets
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ListResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/SupportTicket' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    post:
+      tags: [Support]
+      operationId: createSupportTicket
+      summary: Open a ticket
+      description: |
+        The ticket is tied to the signed-in person's email. Every `invoice_ids` entry must be an invoice of this
+        account (test or live), otherwise `422 invoice_not_found` lists the unknown ones.
+      security: [{ SessionAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [subject, body]
+              properties:
+                subject: { type: string, minLength: 1, maxLength: 200 }
+                category: { $ref: '#/components/schemas/SupportTicketCategory' }
+                body: { type: string, minLength: 1, maxLength: 10000 }
+                invoice_ids: { $ref: '#/components/schemas/SupportInvoiceIds' }
+      responses:
+        '201':
+          description: Opened
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SupportTicket' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+  /support/tickets/{id}:
+    get:
+      tags: [Support]
+      operationId: getSupportTicket
+      summary: Read a ticket and its conversation
+      security: [{ SessionAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/SupportTicketId'
+      responses:
+        '200':
+          description: The ticket
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SupportTicket' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /support/tickets/{id}/messages:
+    post:
+      tags: [Support]
+      operationId: replySupportTicket
+      summary: Reply to a ticket
+      description: Reopens a ticket that was waiting on the customer or resolved.
+      security: [{ SessionAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/SupportTicketId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [body]
+              properties:
+                body: { type: string, minLength: 1, maxLength: 10000 }
+      responses:
+        '201':
+          description: The updated ticket
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SupportTicket' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /support/agents/{id}/avatar:
+    get:
+      tags: [Support]
+      operationId: getSupportAgentAvatar
+      summary: An agent's profile picture
+      description: PNG, JPEG, WebP or GIF as uploaded. Cached for a day; the `v` query parameter changes with each upload.
+      security: []
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, pattern: '^stf_[A-Za-z0-9]+$' } }
+        - { name: v, in: query, schema: { type: integer } }
+      responses:
+        '200':
+          description: The image
+          content:
+            image/png: { schema: { type: string, format: binary } }
+            image/jpeg: { schema: { type: string, format: binary } }
+            image/webp: { schema: { type: string, format: binary } }
+            image/gif: { schema: { type: string, format: binary } }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /admin/support/tickets:
+    get:
+      tags: [Admin]
+      operationId: adminListSupportTickets
+      summary: The support queue
+      description: Most recent activity first. Filter by status, assignee and free text (ticket number, email, subject, invoice or merchant id).
+      security: [{ AdminAuth: [] }, { AdminSession: [] }]
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+        - name: status
+          in: query
+          schema: { type: string, enum: [open, waiting_on_customer, resolved, all], default: open }
+        - name: assigned
+          in: query
+          description: "`me`, `none` or a staff id."
+          schema: { type: string }
+        - name: q
+          in: query
+          schema: { type: string, maxLength: 200 }
+      responses:
+        '200':
+          description: Tickets
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ListResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/AdminSupportTicket' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /admin/support/counts:
+    get:
+      tags: [Admin]
+      operationId: adminSupportCounts
+      summary: Ticket counts for the queue tabs
+      security: [{ AdminAuth: [] }, { AdminSession: [] }]
+      responses:
+        '200':
+          description: Counts
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  object: { type: string, const: support_counts }
+                  open: { type: integer }
+                  waiting_on_customer: { type: integer }
+                  resolved: { type: integer }
+                  unassigned_open: { type: integer }
+                  mine_open: { type: integer }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /admin/support/tickets/{id}:
+    get:
+      tags: [Admin]
+      operationId: adminGetSupportTicket
+      summary: A ticket with internal notes, the requester's account and the invoices it names
+      security: [{ AdminAuth: [] }, { AdminSession: [] }]
+      parameters:
+        - $ref: '#/components/parameters/SupportTicketId'
+      responses:
+        '200':
+          description: The ticket
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdminSupportTicket' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [Admin]
+      operationId: adminUpdateSupportTicket
+      summary: Change a ticket's status or assignee
+      description: Marking a ticket `resolved` emails the requester. Status changes appear in the conversation.
+      security: [{ AdminAuth: [] }, { AdminSession: [] }]
+      parameters:
+        - $ref: '#/components/parameters/SupportTicketId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status: { $ref: '#/components/schemas/SupportTicketStatus' }
+                assigned_staff_id: { type: [string, 'null'], pattern: '^stf_[A-Za-z0-9]+$' }
+      responses:
+        '200':
+          description: The updated ticket
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdminSupportTicket' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /admin/support/tickets/{id}/messages:
+    post:
+      tags: [Admin]
+      operationId: adminReplySupportTicket
+      summary: Reply to a ticket, or add an internal note
+      description: |
+        A reply is emailed to the requester, signed with the agent's visible name; an `internal` note is seen by
+        agents only. `status` sets the ticket's status in the same step (typically `waiting_on_customer` or
+        `resolved`). An unassigned ticket is assigned to the agent who replies.
+      security: [{ AdminAuth: [] }, { AdminSession: [] }]
+      parameters:
+        - $ref: '#/components/parameters/SupportTicketId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [body]
+              properties:
+                body: { type: string, minLength: 1, maxLength: 10000 }
+                internal: { type: boolean, default: false }
+                status: { $ref: '#/components/schemas/SupportTicketStatus' }
+      responses:
+        '201':
+          description: The updated ticket
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdminSupportTicket' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /admin/support/agents:
+    get:
+      tags: [Admin]
+      operationId: adminListSupportAgents
+      summary: Everyone who can answer tickets
+      security: [{ AdminAuth: [] }, { AdminSession: [] }]
+      responses:
+        '200':
+          description: Agents
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  object: { type: string, const: list }
+                  data: { type: array, items: { $ref: '#/components/schemas/SupportAgent' } }
+                  has_more: { type: boolean }
+                  next_cursor: { type: [string, 'null'] }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [Admin]
+      operationId: adminCreateSupportAgent
+      summary: Add a support agent
+      description: |
+        Support desk admins only. The address must be on the CoinVello domain (`@coinvello.com`). Creates a staff
+        account limited to the Support Desk and emails a single-use link (72 h) to choose a password; the agent
+        sets up an authenticator app on first sign-in. The link is also returned (`set_password_url`).
+      security: [{ AdminAuth: [] }, { AdminSession: [] }]
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email: { type: string, format: email, maxLength: 254 }
+                display_name: { type: string, minLength: 1, maxLength: 60 }
+      responses:
+        '201':
+          description: Added
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SupportAgent'
+                  - type: object
+                    properties:
+                      set_password_url: { type: string, format: uri }
+                      expires_in: { type: integer }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/InvalidState' }
+  /admin/support/agents/{id}:
+    patch:
+      tags: [Admin]
+      operationId: adminUpdateSupportAgent
+      summary: Turn an agent's access off or on
+      description: Support desk admins only, for agents added from the Support Desk. Turning access off ends the agent's sessions.
+      security: [{ AdminAuth: [] }, { AdminSession: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, pattern: '^stf_[A-Za-z0-9]+$' } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                active: { type: boolean }
+                display_name: { type: string, minLength: 1, maxLength: 60 }
+      responses:
+        '200':
+          description: The agent
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SupportAgent' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /admin/support/agents/{id}/resend:
+    post:
+      tags: [Admin]
+      operationId: adminResendSupportAgentInvite
+      summary: Send an agent a new set-password link
+      security: [{ AdminAuth: [] }, { AdminSession: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, pattern: '^stf_[A-Za-z0-9]+$' } }
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '200':
+          description: Sent
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SupportAgent'
+                  - type: object
+                    properties:
+                      set_password_url: { type: string, format: uri }
+                      expires_in: { type: integer }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /admin/support/profile:
+    get:
+      tags: [Admin]
+      operationId: adminGetSupportProfile
+      summary: The signed-in staff member's support profile
+      security: [{ AdminAuth: [] }, { AdminSession: [] }]
+      responses:
+        '200':
+          description: Profile
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SupportAgent' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    patch:
+      tags: [Admin]
+      operationId: adminUpdateSupportProfile
+      summary: Set your visible name
+      description: The name customers see on your replies and in reply emails.
+      security: [{ AdminAuth: [] }, { AdminSession: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [display_name]
+              properties:
+                display_name: { type: string, minLength: 1, maxLength: 60 }
+      responses:
+        '200':
+          description: Profile
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SupportAgent' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+  /admin/support/profile/avatar:
+    put:
+      tags: [Admin]
+      operationId: adminSetSupportAvatar
+      summary: Upload your profile picture
+      description: PNG, JPEG, WebP or GIF, at most 1 MB (1,048,576 bytes), base64 encoded. SVG is refused.
+      security: [{ AdminAuth: [] }, { AdminSession: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [content_type, data]
+              properties:
+                content_type: { type: string, enum: [image/png, image/jpeg, image/webp, image/gif] }
+                data: { type: string, maxLength: 1400000, description: Base64 of the image bytes. }
+      responses:
+        '200':
+          description: Profile
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SupportAgent' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+    delete:
+      tags: [Admin]
+      operationId: adminDeleteSupportAvatar
+      summary: Remove your profile picture
+      security: [{ AdminAuth: [] }, { AdminSession: [] }]
+      responses:
+        '200':
+          description: Profile
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SupportAgent' }
+        '403': { $ref: '#/components/responses/Forbidden' }
 webhooks:
   invoice.paid:
     post:
@@ -5248,6 +5818,17 @@ components:
         `Idempotency-Replayed: true`. Same key with a different body returns `409 idempotency_key_reused`.
       schema: { type: string, maxLength: 255 }
       example: 7f0c0a4e-6b7e-4e21-9f9c-2b2a0d7a2a51
+    SupportTicketId:
+      name: id
+      in: path
+      required: true
+      schema: { type: string, pattern: '^tkt_[A-Za-z0-9]+$' }
+    SupportTicketToken:
+      name: CoinVello-Ticket-Token
+      in: header
+      required: true
+      description: The private ticket token from the link emailed to the requester (`stk_...`).
+      schema: { type: string, pattern: '^stk_[A-Za-z0-9_-]{20,100}$' }
     Limit:
       name: limit
       in: query
@@ -7485,6 +8066,125 @@ components:
         email_verified: { type: boolean }
         invited_by: { type: [string, 'null'] }
         last_login_at: { type: [string, 'null'], format: date-time }
+        created_at: { type: string, format: date-time }
+    SupportTicketStatus:
+      type: string
+      enum: [open, waiting_on_customer, resolved]
+      description: "`open` = waiting on CoinVello; `waiting_on_customer` = an agent asked something; `resolved` = done (a customer reply reopens it)."
+    SupportTicketCategory:
+      type: string
+      enum: [account_access, payments, billing, wallets, integrations, other]
+      default: other
+    SupportInvoiceIds:
+      type: array
+      maxItems: 20
+      uniqueItems: true
+      items: { type: string, pattern: '^inv_[A-Za-z0-9]{4,40}$' }
+    SupportCaptcha:
+      type: object
+      properties:
+        object: { type: string, const: support_captcha }
+        algorithm: { type: string, const: SHA-256 }
+        challenge: { type: string, description: Hex SHA-256 of salt + the secret number. }
+        salt: { type: string, examples: ["9f2c4e1a7b3d5f60a1b2c3d4?expires=1793812345"] }
+        signature: { type: string, description: HMAC of the challenge; send it back unchanged. }
+        maxnumber: { type: integer, examples: [100000] }
+        expires_at: { type: string, format: date-time }
+    SupportCaptchaSolution:
+      type: object
+      required: [algorithm, challenge, salt, signature, number]
+      properties:
+        algorithm: { type: string, const: SHA-256 }
+        challenge: { type: string, maxLength: 128 }
+        salt: { type: string, maxLength: 128 }
+        signature: { type: string, maxLength: 128 }
+        number: { type: integer, minimum: 0 }
+    SupportMessage:
+      type: object
+      properties:
+        id: { type: string, examples: [tkm_4Rf8Nq2Wx7Lm] }
+        object: { type: string, const: support_message }
+        author:
+          type: object
+          properties:
+            type: { type: string, enum: [customer, agent, system] }
+            name: { type: [string, 'null'], description: "The agent's visible name; the requester's email for customers." }
+            avatar_url: { type: [string, 'null'], format: uri }
+        body: { type: string }
+        internal: { type: boolean, description: Agent-only note (only ever returned on admin routes). }
+        created_at: { type: string, format: date-time }
+    SupportTicket:
+      type: object
+      properties:
+        id: { type: string, examples: [tkt_8Kd2Lm4Np7Qx] }
+        object: { type: string, const: support_ticket }
+        number: { type: integer, examples: [1042] }
+        subject: { type: string }
+        category: { $ref: '#/components/schemas/SupportTicketCategory' }
+        status: { $ref: '#/components/schemas/SupportTicketStatus' }
+        source: { type: string, enum: [dashboard, web] }
+        email: { type: string }
+        email_verified: { type: boolean, description: "Dashboard tickets: true. Guest tickets: true once the emailed link was opened." }
+        invoice_ids: { $ref: '#/components/schemas/SupportInvoiceIds' }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+        last_message_at: { type: string, format: date-time }
+        resolved_at: { type: [string, 'null'], format: date-time }
+        messages:
+          type: array
+          description: Oldest first. Present when reading a single ticket.
+          items: { $ref: '#/components/schemas/SupportMessage' }
+    AdminSupportTicket:
+      allOf:
+        - $ref: '#/components/schemas/SupportTicket'
+        - type: object
+          properties:
+            merchant:
+              type: [object, 'null']
+              properties:
+                id: { type: string }
+                email: { type: string }
+                business_name: { type: [string, 'null'] }
+                status: { type: string }
+            member_id: { type: [string, 'null'] }
+            assigned_agent:
+              type: [object, 'null']
+              properties:
+                id: { type: string }
+                name: { type: string }
+                email: { type: string }
+            invoices:
+              type: array
+              description: The invoices named in `invoice_ids`, looked up in both modes.
+              items:
+                type: object
+                properties:
+                  id: { type: string }
+                  found: { type: boolean }
+                  merchant_id: { type: [string, 'null'] }
+                  same_account: { type: boolean, description: The invoice belongs to the ticket's merchant. }
+                  livemode: { type: [boolean, 'null'] }
+                  status: { type: [string, 'null'] }
+                  amount: { type: [string, 'null'] }
+                  currency: { type: [string, 'null'] }
+                  created_at: { type: [string, 'null'], format: date-time }
+            ip: { type: [string, 'null'] }
+            user_agent: { type: [string, 'null'] }
+            message_count: { type: integer }
+            last_customer_message_at: { type: [string, 'null'], format: date-time }
+            last_agent_message_at: { type: [string, 'null'], format: date-time }
+    SupportAgent:
+      type: object
+      properties:
+        id: { type: string, examples: [stf_2Lm8Qx4Rf7Nd] }
+        object: { type: string, const: support_agent }
+        email: { type: string }
+        display_name: { type: string, description: The name customers see. Defaults to the part of the email before the @. }
+        avatar_url: { type: [string, 'null'], format: uri }
+        role: { type: string, enum: [owner, finance, support, readonly, agent], description: "Staff role; `agent` can use the Support Desk only." }
+        active: { type: boolean }
+        status: { type: string, enum: [invited, active, disabled], description: "`invited` until the agent has set up two-factor authentication." }
+        support_admin: { type: boolean, description: Can add agents and turn their access off. }
         created_at: { type: string, format: date-time }
     Activity:
       type: object

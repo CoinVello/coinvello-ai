@@ -1,5 +1,7 @@
 # CoinVello MCP server and AI kit
 
+[![CoinVello MCP server](https://mcprush.com/badge/coinvello-mcp/card.svg)](https://mcprush.com/to/coinvello-mcp?ref=badge)
+
 MCP server and integration kit for [CoinVello](https://coinvello.com), the non-custodial crypto
 payment processor: payments go straight to the merchant's own wallet on 11 networks (Bitcoin,
 Ethereum, Base, Arbitrum, Optimism, Polygon, BNB Chain, Avalanche, Robinhood Chain, Solana, Tron;

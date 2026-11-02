@@ -1,5 +1,7 @@
 # @coinvello/mcp
 
+[![CoinVello MCP server](https://mcprush.com/badge/coinvello-mcp/card.svg)](https://mcprush.com/to/coinvello-mcp?ref=badge)
+
 Model Context Protocol server for the [CoinVello](https://coinvello.com) API, the non-custodial crypto
 payment processor (no KYC, merchant keeps the keys, fees as prepaid credits, 11 networks).
 
