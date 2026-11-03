@@ -89,6 +89,7 @@ Messages may change; `type` and `code` will not change within an API version.
 | `destination_invalid` | 422 | Refund / conversion destination fails validation |
 | `destination_same_as_source` | 422 | Refund destination equals the receiving address |
 | `metadata_too_large` | 400 | More than 50 keys or value over 500 chars |
+| `suspicious_input` | 400 | A field carries an injection payload (template expression such as `{{7*7}}`, PHP tag, SQL or shell injection, path traversal, script markup). `param` names the field. Three within an hour block access (`access_temporarily_blocked`) |
 | `url_insecure` | 422 | Webhook/success URL must be HTTPS in live mode |
 | `test_mode_only` | 403 | Endpoint requires a `cv_test_` key |
 | `live_mode_only` | 403 | Endpoint requires a `cv_live_` key |
@@ -111,6 +112,7 @@ Messages may change; `type` and `code` will not change within an API version.
 | `merchant_only` | Admin key used on a merchant endpoint |
 | `merchant_suspended` | Account suspended; read endpoints still work |
 | `ip_not_allowed` | Key has an IP allowlist |
+| `access_temporarily_blocked` | Repeated `suspicious_input` requests: the account and the IP are blocked for an hour (a day on a repeat). Honour `Retry-After`; write to support@coinvello.com if it is a mistake |
 
 ### idempotency_error
 | `code` | When |

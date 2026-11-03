@@ -4839,6 +4839,90 @@ paths:
         '400': { $ref: '#/components/responses/BadRequest' }
         '403': { $ref: '#/components/responses/Forbidden' }
 
+  /admin/access-blocks:
+    get:
+      tags: [Admin]
+      operationId: adminListAccessBlocks
+      summary: List API access blocks
+      description: |
+        Blocks by IP address or merchant account, newest first. The injection guard adds them automatically
+        (`source: auto`) after repeated requests carrying injection payloads (`suspicious_input`); staff can add their
+        own. While a block is active, matching requests get `403 access_temporarily_blocked` with `Retry-After`.
+      security: [{ AdminAuth: [] }, { AdminSession: [] }]
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+        - name: status
+          in: query
+          description: "`active` lists only blocks in force now."
+          schema: { type: string, enum: [active] }
+        - name: subject
+          in: query
+          description: An IP address or merchant id.
+          schema: { type: string }
+      responses:
+        '200':
+          description: Access blocks
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ListResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/AccessBlock' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [Admin]
+      operationId: adminCreateAccessBlock
+      summary: Block an IP address or a merchant
+      description: Blocks all API and dashboard access for the IP or the merchant (API keys and sessions) for `minutes` (default 1440, at most 90 days). Give exactly one of `ip` and `merchant_id`.
+      security: [{ AdminAuth: [] }, { AdminSession: [] }]
+      parameters:
+        - $ref: '#/components/parameters/AdminReason'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                ip: { type: string, maxLength: 64 }
+                merchant_id: { type: string, pattern: '^mer_[A-Za-z0-9]+$' }
+                minutes: { type: integer, minimum: 1, maximum: 129600 }
+                note: { type: string, maxLength: 500 }
+      responses:
+        '201':
+          description: The new block
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AccessBlock' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /admin/access-blocks/{id}/lift:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string, pattern: '^abb_[A-Za-z0-9]+$' }
+    post:
+      tags: [Admin]
+      operationId: adminLiftAccessBlock
+      summary: Lift an access block
+      description: Ends the block at once and clears the subject's strikes. Lifting an already lifted block returns it unchanged.
+      security: [{ AdminAuth: [] }, { AdminSession: [] }]
+      parameters:
+        - $ref: '#/components/parameters/AdminReason'
+      responses:
+        '200':
+          description: The lifted block
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AccessBlock' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
   /admin/audit-log:
     get:
       tags: [Admin]
@@ -8423,6 +8507,28 @@ components:
         enabled: { type: boolean, default: true }
         contact_sales: { type: boolean, default: false, description: "Price is negotiated; `POST /credits/purchases` returns 409 for this bundle and `crypto_prices` is empty." }
         sort_order: { type: integer }
+    AccessBlock:
+      type: object
+      required: [id, object, subject_type, subject, source, status, expires_at, created_at]
+      properties:
+        id: { type: string, example: abb_Q2x8VbN1tR }
+        object: { type: string, const: access_block }
+        subject_type: { type: string, enum: [ip, merchant] }
+        subject: { type: string, description: The blocked IP address or merchant id. }
+        merchant_id: { type: [string, 'null'] }
+        ip: { type: [string, 'null'], description: The address the triggering request came from (automatic blocks) or the blocked address. }
+        source: { type: string, enum: [auto, staff] }
+        rule: { type: [string, 'null'], description: "Detector rule of the last refused request: template, php, sql, command, traversal, xss, prototype_pollution." }
+        field: { type: [string, 'null'], description: "Field that carried the payload, e.g. `business_name` or `metadata.note`." }
+        route: { type: [string, 'null'], example: POST /v1/invoices }
+        sample: { type: [string, 'null'], description: First 300 characters of the offending value. }
+        note: { type: [string, 'null'] }
+        created_by: { type: [string, 'null'], description: Staff id for staff blocks. }
+        status: { type: string, enum: [active, expired, lifted] }
+        expires_at: { type: string, format: date-time }
+        lifted_at: { type: [string, 'null'], format: date-time }
+        lifted_by: { type: [string, 'null'] }
+        created_at: { type: string, format: date-time }
     AdminMerchant:
       type: object
       properties:

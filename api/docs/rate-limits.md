@@ -33,6 +33,14 @@ Do not poll `GET /invoices/{id}` every second from a checkout page. Instead:
 * Use `GET /events?created_gte=` for catch-up after downtime instead of listing every
   resource.
 
+## Injection probing
+
+Requests whose fields carry injection payloads (template expressions such as `{{7*7}}`, PHP tags, SQL or shell
+injection, path traversal, script markup) are refused with `400 suspicious_input`. Three of them within an hour
+block the account (every API key and dashboard session) and the IP address for an hour, a day on a repeat:
+`403 access_temporarily_blocked` with `Retry-After`. Real store data does not trigger it; if it does, write to
+support@coinvello.com with the `request_id`.
+
 ## Need more?
 
 Limits are generous for e-commerce. If you run a high-volume platform, email
