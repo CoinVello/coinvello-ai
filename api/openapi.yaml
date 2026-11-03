@@ -3215,8 +3215,9 @@ paths:
       summary: Invite a team member
       description: |
         Owner and admins only, with a fresh second factor. The invitee gets an email with a single-use link (72 h) to choose
-        a password, then enrols 2FA on first sign-in. The link is also returned (`set_password_url`) in case that inbox gets
-        no mail. Emails are unique across all CoinVello accounts and team members.
+        a password, then enrols 2FA on first sign-in. The link goes only to that inbox: it is how the invitee proves the
+        address is theirs (a development server without mail also returns it as `set_password_url`). Emails are unique
+        across all CoinVello accounts and team members, and @coinvello.com addresses are reserved (`email_reserved`).
       security: [{ SessionAuth: [] }]
       requestBody:
         required: true
@@ -3238,7 +3239,7 @@ paths:
                   - $ref: '#/components/schemas/TeamMember'
                   - type: object
                     properties:
-                      set_password_url: { type: string, format: uri }
+                      set_password_url: { type: string, format: uri, description: Development servers without mail only. }
                       expires_in: { type: integer }
         '400': { $ref: '#/components/responses/BadRequest' }
         '403': { $ref: '#/components/responses/Forbidden' }
@@ -3304,7 +3305,7 @@ paths:
                   - $ref: '#/components/schemas/TeamMember'
                   - type: object
                     properties:
-                      set_password_url: { type: string, format: uri }
+                      set_password_url: { type: string, format: uri, description: Development servers without mail only. }
                       expires_in: { type: integer }
         '403': { $ref: '#/components/responses/Forbidden' }
         '409': { $ref: '#/components/responses/InvalidState' }
