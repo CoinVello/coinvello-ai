@@ -5311,6 +5311,26 @@ paths:
               schema: { $ref: '#/components/schemas/AdminSupportTicket' }
         '400': { $ref: '#/components/responses/BadRequest' }
         '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [Admin]
+      operationId: adminDeleteSupportTicket
+      summary: Delete a ticket and its whole conversation
+      description: |
+        Support desk admins only (`403 support_admin_only` for other agents). The ticket and every message are removed
+        for good and the requester's link stops working; the audit log keeps the number, subject and requester. Nothing is
+        emailed. Guest tickets whose emailed link is not opened within 24 hours are deleted automatically, and until
+        then they are not listed here.
+      security: [{ AdminAuth: [] }, { AdminSession: [] }]
+      parameters:
+        - $ref: '#/components/parameters/SupportTicketId'
+      responses:
+        '200':
+          description: Deleted
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DeletedResponse' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
   /admin/support/tickets/{id}/messages:
     post:
       tags: [Admin]
@@ -8213,7 +8233,7 @@ components:
         status: { $ref: '#/components/schemas/SupportTicketStatus' }
         source: { type: string, enum: [dashboard, web] }
         email: { type: string }
-        email_verified: { type: boolean, description: "Dashboard tickets: true. Guest tickets: true once the emailed link was opened." }
+        email_verified: { type: boolean, description: "Dashboard tickets: true. Guest tickets: true once the emailed link was opened. Until then a guest ticket is not shown to agents or to the matching account, and it is deleted if the link is not opened within 24 hours." }
         invoice_ids: { $ref: '#/components/schemas/SupportInvoiceIds' }
         created_at: { type: string, format: date-time }
         updated_at: { type: string, format: date-time }
@@ -8526,6 +8546,19 @@ components:
         field: { type: [string, 'null'], description: "Field that carried the payload, e.g. `business_name` or `metadata.note`." }
         route: { type: [string, 'null'], example: POST /v1/invoices }
         sample: { type: [string, 'null'], description: First 300 characters of the offending value. }
+        strikes:
+          type: array
+          description: "The refused requests that led to an automatic block, oldest first (up to 10). Blocks made before payloads were kept list the account's logged refusals with `sample: null`."
+          items:
+            type: object
+            properties:
+              at: { type: string, format: date-time }
+              rule: { type: [string, 'null'] }
+              field: { type: [string, 'null'] }
+              route: { type: string, example: POST /v1/webhooks }
+              sample: { type: [string, 'null'] }
+              ip: { type: [string, 'null'] }
+              request_id: { type: [string, 'null'] }
         note: { type: [string, 'null'] }
         created_by: { type: [string, 'null'], description: Staff id for staff blocks. }
         status: { type: string, enum: [active, expired, lifted] }
