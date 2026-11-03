@@ -784,8 +784,10 @@ With the SDK (`composer require coinvello/sdk`): `$cv = new \CoinVello\Sdk\Clien
 
 1. Account email confirmed: live API keys and live-mode writes need it (`email_verified` on the
    account; otherwise `403 email_unverified`).
-2. Live wallets registered with a `cv_live_` key (verification optional; for xpubs, `first_address`
-   matches the wallet's first receive address).
+2. Live wallets registered in the dashboard, or with a restricted `cv_live_rk_` key that lists
+   `wallets:write` (full-access live keys cannot change wallets: 403 insufficient_scope). The owner is
+   emailed about every live wallet or webhook change made by a key or team member. For xpubs,
+   `first_address` matches the wallet's first receive address.
 3. Credits bought (`GET /credits/bundles`, `POST /credits/purchases`, pay in crypto or with a saved
    card), or `billing_plan: "pay_as_you_go"` set (section 3b; Bitcoin still uses credits).
 4. Live webhook endpoint over HTTPS created; secret stored; handler verifies signature, dedupes on

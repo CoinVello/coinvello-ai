@@ -134,10 +134,12 @@ untrusted contexts:
 
 * `POST /wallets`, `PATCH /wallets/{id}`, `DELETE /wallets/{id}`, `/verification`, `/verify`
   and all `/webhooks` writes **are** available to API keys, because plugins need them during
-  setup. They are gated by scope (`wallets:write`, `webhooks:write`), and every such change
-  triggers an immediate email to the account owner with a one-click "this wasn't me ->
-  revoke key + lock account" link. Restrict production keys to the scopes they need and keep
-  `wallets:write` off keys that live on shared hosting once setup is done.
+  setup. They are gated by scope (`wallets:write`, `webhooks:write`). Full-access live keys
+  leave out `wallets:write`: wallet changes with a live key need a restricted key that lists it.
+  Every live wallet or webhook change not made by the owner's own dashboard session (an API
+  key, a team member) emails the owner at once: what changed, the key prefix or member, the IP
+  and client. If it was not you, delete the key (Settings > API keys) or remove the member, then
+  check Wallets, Webhooks and Activity. Keep `wallets:write` off keys that live on shared hosting.
 * API key management itself is dashboard-only: `GET|POST /api-keys` and `DELETE /api-keys/{id}` accept
   the session cookie only (never an API key) and require a step-up.
 

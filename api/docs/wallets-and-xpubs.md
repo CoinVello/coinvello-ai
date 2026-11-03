@@ -207,8 +207,10 @@ headlessly. Verification does not expire.
 Wallets decide where customer money goes, so in the **dashboard** every wallet change
 (add, edit, archive, and the optional verify) requires a recent second-factor verification - a 5-minute
 "step-up" window after `POST /auth/mfa/verify` - even if the account does not use 2FA at
-login. API-key calls to `/wallets` are gated by the `wallets:write` scope and trigger an
-owner email with a one-click revoke link. Details in [security.md](security.md).
+login. API-key calls to `/wallets` need the `wallets:write` scope, which full-access live keys
+leave out (create a restricted key that lists it). Every live wallet change not made by the owner's
+own dashboard session emails the owner: who made it (key prefix or team member), from which IP and
+what changed. Details in [security.md](security.md).
 
 ## Lifecycle
 

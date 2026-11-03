@@ -304,7 +304,7 @@ export function createServer(cfg: ServerConfig = configFromEnv()): McpServer {
       title: "Register a merchant wallet",
       description:
         "Register a receiving wallet the merchant controls. type=xpub for bitcoin (CoinVello derives a fresh address per invoice from the extended PUBLIC key); type=address for ethereum, base, arbitrum, optimism, polygon, bnb, avalanche, robinhood, solana, tron. " +
-        "Never pass a private key or seed phrase. The wallet is usable at once in live and test mode; addresses are validated strictly (format, checksum, network, no token contracts). For xpubs, show the returned first_address so the merchant can compare it with their wallet's first receive address. Signed-message verification (POST /wallets/{id}/verification then /verify) is optional and never required.",
+        "Never pass a private key or seed phrase. The wallet is usable at once in live and test mode; addresses are validated strictly (format, checksum, network, no token contracts). For xpubs, show the returned first_address so the merchant can compare it with their wallet's first receive address. Signed-message verification (POST /wallets/{id}/verification then /verify) is optional and never required. In live mode this needs a key that lists wallets:write: full-access live keys get 403 insufficient_scope, so tell the merchant to add the wallet in the dashboard (2FA) or use a restricted key made for wallet setup. The account owner is emailed about every live wallet change.",
       inputSchema: {
         type: z.enum(["xpub", "address"]),
         chain: Chain,

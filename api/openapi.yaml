@@ -446,7 +446,11 @@ paths:
           invoices would otherwise collide) and by memo where the chain supports it.
 
         New wallets are `active` immediately, in live and test mode: the 2FA step-up required to
-        create or change a wallet from the dashboard is the control. Addresses are validated strictly
+        create or change a wallet from the dashboard is the control. With an API key, live-mode wallet
+        changes need a key whose scopes list `wallets:write`: full-access live keys created from
+        2026-11-03 leave it out (`403 insufficient_scope`), so create a restricted key for wallet setup and
+        keep it off your store. Every live wallet or webhook change not made by the owner's own dashboard
+        session emails the owner (who, from which IP, what changed). Addresses are validated strictly
         per chain (`422 address_invalid` with `param` set): EVM must be valid hex and pass EIP-55 when
         mixed-case, and may not be the zero address, a burn address, a precompile or a token contract;
         Tron must be base58check with the `T` prefix; Solana a base58 32-byte public key; xpubs must

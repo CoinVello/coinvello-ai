@@ -42,6 +42,12 @@ A WooCommerce plugin, for example, needs `invoices:write invoices:read payments:
 checkout_sessions:write webhooks:write events:read`. A call outside the key's scope returns
 `403 permission_error` with code `insufficient_scope`.
 
+**Full-access live keys cannot change payout wallets.** A full-access (unrestricted) `cv_live_` key
+created from 2026-11-03 has every scope except `wallets:write`, so a key copied off a hacked store
+cannot redirect your payments. Change wallets in the dashboard (2FA), or create a restricted key that
+lists `wallets:write` for wallet setup and keep it off your store. Test keys and older full-access
+keys keep every scope. Store plugins never need `wallets:write`.
+
 ## Publishable keys
 
 There are **no** publishable keys. Anything that runs in a browser should talk to your server,
