@@ -5,8 +5,10 @@
 Use a `cv_test_` key. Test mode is a complete, isolated copy of the API:
 
 * Wallets, invoices, webhooks, credits and events are separate from live.
-* Test credits cost nothing and never run out (they are topped up automatically). Live accounts
-  start with no credits: they buy credits or use pay as you go.
+* Test credits cost nothing: every 24 hours the test balance is set back to 200 available credits
+  (`test_credits_daily` and `test_credits_reset_at` on `GET /credits`). Unused ones do not carry over; when
+  they run out, new test invoices paid with credits get `402 insufficient_credits` with `details.resets_at`
+  until the reset. Live accounts start with no credits: they buy credits or use pay as you go.
 * Wallet verification is optional here as in live mode.
 * Addresses are derived on **test networks**:
 

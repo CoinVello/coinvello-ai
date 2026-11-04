@@ -89,7 +89,9 @@ what CoinVello does, billing never blocks a payment in progress:
    with `details: { available, required, bundles_url }`. Detection and webhooks for
    already-issued invoices continue: their fees were reserved when they were created.
 
-Test mode never runs out: test credits are topped up automatically.
+Test mode gets 200 free credits every 24 hours (`test_credits_daily`, `test_credits_reset_at` on `GET /credits`).
+Unused test credits do not carry over, and a test invoice that needs more than is left gets
+`402 insufficient_credits` with `details.resets_at`.
 
 ## Balance
 

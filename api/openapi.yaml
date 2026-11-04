@@ -6880,6 +6880,8 @@ components:
         estimated_payments_remaining: { type: integer, description: "available / trailing-30-day average credits per confirmed payment." }
         estimated_invoices_remaining: { type: integer, deprecated: true, description: Alias of `estimated_payments_remaining`. }
         auto_topup: { $ref: '#/components/schemas/AutoTopup' }
+        test_credits_daily: { type: [integer, 'null'], description: "Test mode only: free test credits made available every 24 hours (null when test credits are unlimited). Unused ones do not carry over." }
+        test_credits_reset_at: { type: [string, 'null'], format: date-time, description: Test mode only. When the balance is next set back to `test_credits_daily`. }
         updated_at: { type: string, format: date-time }
     AutoTopup:
       type: object

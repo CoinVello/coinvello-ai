@@ -15,7 +15,7 @@ Mock: `http://localhost:4242/v1` (api/reference-server; any `cv_test_` key; no w
 | Lists | `?limit=20&cursor=...` -> `{ "object":"list", "data":[...], "has_more":bool, "next_cursor":string|null }` |
 | Errors | `{ "error": { "type", "code", "message", "param?", "request_id", "doc_url?", "details?" } }` |
 | Rate limit | 100 req/s per key; 429 + `Retry-After` |
-| Test mode | Separate universe; testnets; test credits never run out; `POST /test/simulate_payment` |
+| Test mode | Separate universe; testnets; 200 free test credits every 24 hours; `POST /test/simulate_payment` |
 
 ## Core endpoints
 

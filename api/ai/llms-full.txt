@@ -21,7 +21,7 @@ CoinVello (https://coinvello.com) is a **non-custodial crypto payment processor*
   (floor 2 credits, cap 2,000 credits). Bundles get cheaper per credit with volume, giving an
   effective rate of ~0.30% (Starter) down to under 0.10% (Enterprise). There are no free live
   credits; an account that does not want to prepay uses **pay as you go** (0.4% split on-chain,
-  open to every account, section 3b). Test mode credits cost nothing and never run out. Live prices come
+  open to every account, section 3b). Test mode gets 200 free credits every 24 hours (402 insufficient_credits with details.resets_at when spent). Live prices come
   from `GET /credits/bundles`.
 - **11 networks**: bitcoin, ethereum, base, arbitrum, optimism, polygon, bnb, avalanche,
   robinhood, solana, tron. Assets: native coins plus USDC (ethereum, base, arbitrum, optimism, polygon,
