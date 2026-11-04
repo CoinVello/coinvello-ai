@@ -4852,7 +4852,7 @@ paths:
         Blocks by IP address, merchant account or Support Desk email, newest first. The injection guard adds IP and
         merchant blocks automatically (`source: auto`) after repeated requests carrying injection payloads
         (`suspicious_input`); staff can add their own. While a block is active, matching API requests get
-        `403 access_temporarily_blocked` with `Retry-After`, a blocked IP is also refused by every page of the website,
+        `403 access_temporarily_blocked` with `Retry-After` (`403 access_blocked` for a permanent block), a blocked IP is also refused by every page of the website,
         and a blocked email cannot open Support Desk tickets (`403 email_blocked`).
       security: [{ AdminAuth: [] }, { AdminSession: [] }]
       parameters:
@@ -4889,7 +4889,7 @@ paths:
       operationId: adminCreateAccessBlock
       summary: Block an IP address, a merchant or a Support Desk email
       description: |
-        For `minutes` (default 1440, at most 90 days). Give exactly one of:
+        For `minutes` (default 1440, at most 90 days), or until lifted with `permanent: true`. Give exactly one of:
         - `ip`: all API access, the Support Desk forms and every page of the website.
         - `merchant_id`: all API and dashboard access of the account (API keys and sessions).
         - `email`: an address (`name@example.com`) or a whole domain (`@example.com`) can no longer open Support Desk
@@ -4908,6 +4908,7 @@ paths:
                 merchant_id: { type: string, pattern: '^mer_[A-Za-z0-9]+$' }
                 email: { type: string, maxLength: 254, description: "An address, or a whole domain written as `@example.com` or `*@example.com`; a domain block also covers its subdomains." }
                 minutes: { type: integer, minimum: 1, maximum: 129600 }
+                permanent: { type: boolean, description: "Block until lifted, instead of `minutes`." }
                 note: { type: string, maxLength: 500 }
       responses:
         '201':
@@ -5062,7 +5063,7 @@ paths:
                       type: object
                       properties:
                         ip: { type: string }
-                        expires_at: { type: string, format: date-time }
+                        expires_at: { type: [string, 'null'], format: date-time, description: '`null` for a permanent block.' }
                   has_more: { type: boolean }
                   next_cursor: { type: 'null' }
         '403': { $ref: '#/components/responses/Forbidden' }
@@ -8226,7 +8227,7 @@ components:
     SupportTicketStatus:
       type: string
       enum: [open, waiting_on_customer, resolved]
-      description: "`open` = waiting on CoinVello; `waiting_on_customer` = an agent asked something; `resolved` = done (a customer reply reopens it)."
+      description: "`open` = waiting on CoinVello; `waiting_on_customer` = an agent asked something; `resolved` = done (a customer reply reopens it). A ticket left `waiting_on_customer` with no activity for 48 hours is resolved automatically, and the customer is emailed."
     SupportTicketCategory:
       type: string
       enum: [account_access, payments, billing, wallets, integrations, other]
@@ -8609,7 +8610,8 @@ components:
         note: { type: [string, 'null'] }
         created_by: { type: [string, 'null'], description: Staff id for staff blocks. }
         status: { type: string, enum: [active, expired, lifted] }
-        expires_at: { type: string, format: date-time }
+        expires_at: { type: [string, 'null'], format: date-time, description: '`null` for a permanent block (it lasts until lifted).' }
+        permanent: { type: boolean }
         lifted_at: { type: [string, 'null'], format: date-time }
         lifted_by: { type: [string, 'null'] }
         created_at: { type: string, format: date-time }

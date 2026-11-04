@@ -541,7 +541,7 @@ HTTP status + `error.type` + `error.code`. Branch on `type` first, then `code`.
 401 authentication_error    api_key_missing, api_key_invalid, api_key_revoked, api_key_expired
 402 credits_error           insufficient_credits (details.available, details.required, details.bundles_url)
 403 permission_error        insufficient_scope, test_mode_only, live_mode_only, merchant_suspended, ip_not_allowed,
-                            access_temporarily_blocked (honour Retry-After)
+                            access_temporarily_blocked (honour Retry-After), access_blocked
 404 invalid_request_error   resource_missing
 409 invalid_request_error   invalid_state, quote_expired, rate_lock_expired, rate_lock_used
 409 idempotency_error       idempotency_key_reused (same key, different body), idempotency_key_in_progress (retry shortly)
