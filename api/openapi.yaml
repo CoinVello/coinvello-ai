@@ -8637,6 +8637,7 @@ components:
             reserved: { type: integer }
         counts:
           type: object
+          description: Live mode only; test-mode invoices, wallets and webhooks are not counted.
           properties:
             wallets: { type: integer }
             invoices_total: { type: integer }
