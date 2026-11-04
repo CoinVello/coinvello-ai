@@ -112,7 +112,8 @@ Messages may change; `type` and `code` will not change within an API version.
 | `merchant_only` | Admin key used on a merchant endpoint |
 | `merchant_suspended` | Account suspended; read endpoints still work |
 | `ip_not_allowed` | Key has an IP allowlist |
-| `access_temporarily_blocked` | Repeated `suspicious_input` requests: the account and the IP are blocked for an hour (a day on a repeat). Honour `Retry-After`; write to support@coinvello.com if it is a mistake |
+| `access_temporarily_blocked` | Repeated `suspicious_input` requests: the account and the IP are blocked for an hour (a day on a repeat), or staff blocked the IP or the account. Honour `Retry-After`; write to support@coinvello.com if it is a mistake |
+| `email_blocked` | Support Desk: staff blocked this email address or its domain from opening tickets |
 
 ### idempotency_error
 | `code` | When |
