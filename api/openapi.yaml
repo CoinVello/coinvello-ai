@@ -5103,7 +5103,7 @@ paths:
       tags: [Support]
       operationId: getGuestSupportTicket
       summary: Read a ticket from its private link
-      description: The first read also confirms the requester's email address (the link only ever went there).
+      description: The first read also confirms the requester's email address (the link only ever went there). Links of a blocked email or domain answer `403 email_blocked`, and a ticket not confirmed yet is then deleted.
       security: []
       parameters:
         - $ref: '#/components/parameters/SupportTicketToken'
